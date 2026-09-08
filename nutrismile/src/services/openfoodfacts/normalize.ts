@@ -278,3 +278,56 @@ export function mapProducts(products: readonly OffProduct[]): MapPageResult {
     skipped: [...reasons].map(([code, count]) => ({ code, count })),
   };
 }
+
+/**
+ * Whatever could be read from a product that failed validation.
+ *
+ * A product with a name but no calories is useless to log and is therefore
+ * rejected, but the name is still worth having: it saves the user typing it
+ * out when they add the food by hand. Energy is deliberately never carried
+ * over — it was either missing or implausible, and a prefilled wrong number
+ * is worse than an empty field.
+ */
+export interface PartialFood {
+  barcode: string | null;
+  name: string | null;
+  brand: string | null;
+  basisUnit: BasisUnit;
+  proteinGPer100: number | null;
+  carbsGPer100: number | null;
+  fatGPer100: number | null;
+}
+
+/** Read a product loosely, for prefilling a form rather than for storage. */
+export function extractPartial(product: OffProduct): PartialFood {
+  const nutriments = product.nutriments ?? {};
+  const code = text(product.code);
+
+  const plausibleMacro = (value: unknown): number | null => {
+    const grams = nonNegative(value);
+    return grams !== null && grams <= 100 ? grams : null;
+  };
+
+  return {
+    barcode: code && /^\d{6,14}$/.test(code) ? code : null,
+    name:
+      text(product.product_name) ??
+      text(product.product_name_en) ??
+      text(product.generic_name),
+    brand: text(product.brands)?.split(',')[0]?.trim() ?? null,
+    basisUnit: detectBasisUnit(product),
+    proteinGPer100: plausibleMacro(nutriments.proteins_100g),
+    carbsGPer100: plausibleMacro(nutriments.carbohydrates_100g),
+    fatGPer100: plausibleMacro(nutriments.fat_100g),
+  };
+}
+
+/** Whether a partial carries anything worth prefilling a form with. */
+export function isUsefulPartial(partial: PartialFood): boolean {
+  return (
+    partial.name !== null ||
+    partial.proteinGPer100 !== null ||
+    partial.carbsGPer100 !== null ||
+    partial.fatGPer100 !== null
+  );
+}

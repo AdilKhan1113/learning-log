@@ -12,8 +12,16 @@
  */
 import { type Result, err, ok } from '../../domain/result.ts';
 import { normalize } from '../../domain/search/normalize.ts';
-import { type MapPageResult, mapProducts } from './normalize.ts';
-import { OFF_FIELDS, type OffSearchResponse } from './types.ts';
+import {
+  type MapPageResult,
+  type MappedFood,
+  type PartialFood,
+  extractPartial,
+  isUsefulPartial,
+  mapProduct,
+  mapProducts,
+} from './normalize.ts';
+import { OFF_FIELDS, type OffProductResponse, type OffSearchResponse } from './types.ts';
 
 const BASE_URL = 'https://world.openfoodfacts.org';
 
@@ -53,6 +61,11 @@ export function describeLookupError(error: LookupError): string {
     case 'query_too_short':
       return `Type at least ${MIN_REMOTE_QUERY_LENGTH} characters to search the food database.`;
   }
+}
+
+/** The product endpoint for one barcode. */
+export function buildProductUrl(barcode: string): string {
+  return `${BASE_URL}/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${OFF_FIELDS}`;
 }
 
 /** Built separately from the request so it can be asserted in tests. */
@@ -146,4 +159,48 @@ export async function searchProducts(
   if (!Array.isArray(products)) return err({ code: 'malformed' });
 
   return ok(mapProducts(products));
+}
+
+/**
+ * The three things a barcode lookup can find.
+ *
+ * `unusable` is the product being present but not loggable — no calories, or
+ * numbers that cannot be real. It is kept separate from `absent` because the
+ * name is still worth offering when the user adds the food by hand.
+ */
+export type ProductLookup =
+  | { kind: 'found'; food: MappedFood }
+  | { kind: 'unusable'; partial: PartialFood }
+  | { kind: 'absent' };
+
+/**
+ * Look one barcode up.
+ *
+ * A failure to ask is an error; the database answering "no" is not. The screen
+ * has to say something different for each, so they are different values.
+ */
+export async function lookupProduct(
+  barcode: string,
+  options: FetchOptions = {},
+): Promise<Result<ProductLookup, LookupError>> {
+  const response = await getJson<OffProductResponse>(buildProductUrl(barcode), options);
+
+  if (!response.ok) {
+    // The product endpoint answers 404 for an unknown barcode, which is an
+    // answer rather than a failure.
+    if (response.error.code === 'http' && response.error.status === 404) {
+      return ok({ kind: 'absent' });
+    }
+    return response;
+  }
+
+  const body = response.value;
+  if (!body || typeof body !== 'object') return err({ code: 'malformed' });
+  if (body.status !== 1 || !body.product) return ok({ kind: 'absent' });
+
+  const mapped = mapProduct(body.product);
+  if (mapped.ok) return ok({ kind: 'found', food: mapped.value });
+
+  const partial = extractPartial(body.product);
+  return ok(isUsefulPartial(partial) ? { kind: 'unusable', partial } : { kind: 'absent' });
 }

@@ -38,6 +38,12 @@ export interface OffProduct {
   nutriments?: OffNutriments;
 }
 
+/** The single-product endpoint. `status` is 1 when the product was found. */
+export interface OffProductResponse {
+  status?: number;
+  product?: OffProduct;
+}
+
 export interface OffSearchResponse {
   products?: OffProduct[];
   count?: number;

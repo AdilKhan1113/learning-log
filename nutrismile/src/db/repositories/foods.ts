@@ -234,6 +234,9 @@ export async function remove(id: string): Promise<void> {
  */
 export const CACHE_TTL_DAYS = 60;
 
+/** Upstream databases a cached row can come from. */
+export type CatalogSource = 'openfoodfacts' | 'usda' | 'nutritionix';
+
 /**
  * Write products fetched from an upstream database into the local catalogue.
  *
@@ -252,7 +255,7 @@ export const CACHE_TTL_DAYS = 60;
  */
 export async function cacheProducts(
   products: readonly MappedFood[],
-  source: 'openfoodfacts' | 'usda' | 'nutritionix' = 'openfoodfacts',
+  source: CatalogSource = 'openfoodfacts',
 ): Promise<{ inserted: number; refreshed: number }> {
   if (products.length === 0) return { inserted: 0, refreshed: 0 };
 
@@ -399,4 +402,63 @@ export async function pruneCache(olderThanDays = CACHE_TTL_DAYS): Promise<number
   );
 
   return result.changes;
+}
+
+
+/**
+ * Find a cached or custom food by barcode.
+ *
+ * Tried in the order the candidates are given — the canonical EAN-13 first,
+ * then the forms a catalogue might have stored instead. A food the user
+ * created themselves wins over a cached one for the same barcode, since they
+ * entered it deliberately.
+ */
+export async function findByBarcode(
+  candidates: readonly string[],
+): Promise<{ id: string; name: string } | null> {
+  if (candidates.length === 0) return null;
+  const db = await getDatabase();
+
+  for (const candidate of candidates) {
+    const row = await db.getFirstAsync<{ id: string; name: string }>(
+      `SELECT id, name FROM foods
+       WHERE barcode = ? AND deleted_at IS NULL
+       ORDER BY CASE WHEN source = 'custom' THEN 0 ELSE 1 END
+       LIMIT 1`,
+      candidate,
+    );
+    if (row) return row;
+  }
+
+  return null;
+}
+
+/**
+ * Cache one product and return its local id.
+ *
+ * The barcode scanner needs the id to open the serving sheet, and looking it
+ * up again afterwards would be a second query for something this already
+ * knows.
+ */
+export async function cacheProduct(
+  product: MappedFood,
+  source: CatalogSource = 'openfoodfacts',
+): Promise<string> {
+  await cacheProducts([product], source);
+
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ id: string }>(
+    `SELECT id FROM foods
+     WHERE source = ? AND source_id = ? AND deleted_at IS NULL`,
+    source,
+    product.sourceId,
+  );
+
+  if (!row) {
+    // cacheProducts either inserted or refreshed a row for this source id, so
+    // its absence means something is wrong with the write rather than with the
+    // data, and silently returning a wrong id would log the wrong food.
+    throw new Error(`Cached product ${product.sourceId} could not be read back`);
+  }
+  return row.id;
 }

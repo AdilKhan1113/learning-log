@@ -28,17 +28,30 @@ function parseField(value: string): number | null {
 
 export default function CreateFoodModal() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ name?: string; meal?: string; barcode?: string }>();
+  const params = useLocalSearchParams<{
+    name?: string;
+    meal?: string;
+    barcode?: string;
+    brand?: string;
+    basis?: string;
+    protein?: string;
+    carbs?: string;
+    fat?: string;
+  }>();
   const profile = useSession((s) => s.profile);
   const meal = (params.meal as Meal) ?? 'snacks';
 
+  // Prefilled from a barcode whose product was listed without usable
+  // nutrition, so the user completes a form rather than starting one.
   const [name, setName] = useState(params.name ?? '');
-  const [brand, setBrand] = useState('');
-  const [basisUnit, setBasisUnit] = useState<BasisUnit>('g');
+  const [brand, setBrand] = useState(params.brand ?? '');
+  const [basisUnit, setBasisUnit] = useState<BasisUnit>(
+    params.basis === 'ml' ? 'ml' : 'g',
+  );
   const [kcal, setKcal] = useState('');
-  const [protein, setProtein] = useState('');
-  const [carbs, setCarbs] = useState('');
-  const [fat, setFat] = useState('');
+  const [protein, setProtein] = useState(params.protein ?? '');
+  const [carbs, setCarbs] = useState(params.carbs ?? '');
+  const [fat, setFat] = useState(params.fat ?? '');
   const [serving, setServing] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,12 +105,19 @@ export default function CreateFoodModal() {
       <View style={{ gap: spacing.xs }}>
         <Text variant="title">New food</Text>
         <Text variant="body" color={palette.textSecondary}>
-          Saved to your foods, so it's one tap next time.
+          {params.barcode
+            ? 'Saved against this barcode, so scanning it again finds it.'
+            : "Saved to your foods, so it's one tap next time."}
         </Text>
       </View>
 
       <Field label="Name">
-        <Input value={name} onChangeText={setName} placeholder="Porridge oats" autoFocus />
+        <Input
+          value={name}
+          onChangeText={setName}
+          placeholder="Porridge oats"
+          autoFocus={!params.name}
+        />
       </Field>
 
       <Field label="Brand" optional>
@@ -135,7 +155,14 @@ export default function CreateFoodModal() {
       </Field>
 
       <Field label={`Calories per 100 ${basisUnit}`}>
-        <Input value={kcal} onChangeText={setKcal} placeholder="379" numeric suffix="kcal" />
+        <Input
+          value={kcal}
+          onChangeText={setKcal}
+          placeholder="379"
+          numeric
+          suffix="kcal"
+          autoFocus={!!params.name}
+        />
       </Field>
 
       <View style={{ flexDirection: 'row', gap: spacing.md }}>
