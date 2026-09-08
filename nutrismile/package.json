@@ -9,9 +9,12 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
-    "test": "node --test tests/domain/*.test.ts && node tests/db/schema.smoke.mjs",
+    "test": "npm run check:schema && node --test tests/domain/*.test.ts tests/db/*.test.mjs && node tests/db/schema.smoke.mjs",
     "test:schema": "node tests/db/schema.smoke.mjs",
-    "test:domain": "node --test tests/domain/*.test.ts"
+    "test:domain": "node --test tests/domain/*.test.ts",
+    "build:schema": "node scripts/build-schema.mjs",
+    "check:schema": "node scripts/build-schema.mjs --check",
+    "test:sql": "node --test tests/db/*.test.mjs"
   },
   "dependencies": {
     "expo": "~54.0.0",
@@ -31,7 +34,7 @@
     "@supabase/supabase-js": "^2.45.0",
     "@react-native-async-storage/async-storage": "~2.2.0",
     "zustand": "^5.0.0",
-    "uuid": "^11.0.0"
+    "expo-crypto": "~15.0.0"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
