@@ -154,6 +154,12 @@ export default function OnboardingScreen() {
               rate you picked would give on its own.
             </Text>
           ) : null}
+          {suggestion.proteinCapped ? (
+            <Text variant="caption" color={palette.textSecondary}>
+              Protein is held to about a third of your calories here, leaving
+              more room for carbs and fat. You can change the split any time.
+            </Text>
+          ) : null}
         </Card>
       ) : null}
 

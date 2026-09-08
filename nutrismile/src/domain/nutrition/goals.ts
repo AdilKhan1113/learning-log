@@ -147,6 +147,21 @@ const PROTEIN_G_PER_KG: Record<GoalType, number> = {
 /** Fat is never set below this, to cover essential fatty acids. */
 const MIN_FAT_G_PER_KG = 0.6;
 
+/**
+ * Protein never takes more than this share of the day's calories.
+ *
+ * The g/kg figures above are anchored to total body weight, and at higher
+ * weights that overshoots: adipose tissue does not need feeding with protein
+ * the way lean mass does. Without a ceiling, a heavier person on a deficit ends
+ * up with protein crowding out most of their carbohydrate.
+ *
+ * The clinically tidier fix is to anchor to goal or lean body weight, but that
+ * needs a number onboarding does not ask for. A ceiling gets most of the
+ * benefit for none of the extra questions: it leaves the g/kg rule untouched
+ * for the great majority and only binds at the extremes.
+ */
+const MAX_PROTEIN_SHARE_OF_CALORIES = 0.35;
+
 /** Otherwise fat takes this share of calories, with carbs taking the rest. */
 const FAT_SHARE_OF_CALORIES = 0.25;
 
@@ -156,6 +171,8 @@ export interface MacroSplit extends MacroTargets {
   /** True when the target was too small to fit protein and fat as calculated,
    *  so both were scaled down proportionally and carbs set to zero. */
   compressed: boolean;
+  /** True when the share ceiling reduced protein below its g/kg figure. */
+  proteinCapped: boolean;
 }
 
 /**
@@ -163,15 +180,24 @@ export interface MacroSplit extends MacroTargets {
  *
  * Protein and fat are anchored to body weight first because both have floors
  * that matter physiologically; carbohydrate takes whatever calories remain.
- * At very low targets the two anchors can exceed the target outright, in which
- * case they are scaled proportionally rather than allowed to overshoot.
+ * Protein is then held to a share of the day's calories, so the g/kg rule
+ * cannot crowd out carbohydrate at higher body weights.
+ *
+ * At very low targets the two anchors can still exceed the target outright, in
+ * which case they are scaled proportionally rather than allowed to overshoot.
  */
 export function calculateMacroSplit(
   calorieTarget: number,
   weightKg: number,
   goalType: GoalType,
 ): MacroSplit {
-  let proteinG = PROTEIN_G_PER_KG[goalType] * weightKg;
+  const proteinFromWeight = PROTEIN_G_PER_KG[goalType] * weightKg;
+  const proteinCeiling =
+    (MAX_PROTEIN_SHARE_OF_CALORIES * calorieTarget) / KCAL_PER_G.protein;
+
+  const proteinCapped = proteinFromWeight > proteinCeiling;
+  let proteinG = Math.min(proteinFromWeight, proteinCeiling);
+
   let fatG = Math.max(
     MIN_FAT_G_PER_KG * weightKg,
     (FAT_SHARE_OF_CALORIES * calorieTarget) / KCAL_PER_G.fat,
@@ -197,6 +223,7 @@ export function calculateMacroSplit(
     carbsGTarget: round1(carbsG),
     fatGTarget: round1(fatG),
     compressed,
+    proteinCapped,
   };
 }
 

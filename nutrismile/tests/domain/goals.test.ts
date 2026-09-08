@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { BodyMetrics } from '../../src/domain/types.ts';
 import {
   BMR_FLOOR_RATIO,
+  KCAL_PER_G,
   KCAL_PER_KG,
   MAX_RATE_KG_WEEK,
   calculateCalorieTarget,
@@ -177,10 +178,60 @@ describe('macro split', () => {
     assert.ok(split.fatGTarget >= 0.6 * 70 - 0.1);
   });
 
+  test('protein is held to a share of calories at higher body weights', () => {
+    // Anchoring 1.8 g/kg to total body weight gives 211g here, which is 41% of
+    // the day's calories and leaves little room for carbohydrate.
+    const split = calculateMacroSplit(2050, 117, 'lose');
+
+    assert.equal(split.proteinCapped, true);
+    assert.ok(split.proteinGTarget < 1.8 * 117);
+    const proteinShare = (split.proteinGTarget * KCAL_PER_G.protein) / 2050;
+    assert.ok(proteinShare <= 0.351, `protein took ${Math.round(proteinShare * 100)}%`);
+  });
+
+  test('the ceiling gives the calories it takes back to carbohydrate', () => {
+    const split = calculateMacroSplit(2050, 117, 'lose');
+    // Uncapped this was 144g of carbs; the ceiling should raise it.
+    assert.ok(split.carbsGTarget > 160, `got ${split.carbsGTarget}g of carbs`);
+  });
+
+  test('a typical body weight is unaffected by the ceiling', () => {
+    for (const weightKg of [55, 65, 70, 85]) {
+      const split = calculateMacroSplit(2000, weightKg, 'lose');
+      assert.equal(split.proteinCapped, false, `${weightKg}kg should not be capped`);
+      assert.ok(Math.abs(split.proteinGTarget - 1.8 * weightKg) < 0.2);
+    }
+  });
+
+  test('a capped split still adds up to the target exactly', () => {
+    const split = calculateMacroSplit(2050, 117, 'lose');
+    const kcal =
+      split.proteinGTarget * KCAL_PER_G.protein +
+      split.carbsGTarget * KCAL_PER_G.carbs +
+      split.fatGTarget * KCAL_PER_G.fat;
+    assert.ok(Math.abs(kcal - 2050) < 5, `got ${kcal}`);
+  });
+
+  test('protein never exceeds its share, whatever the inputs', () => {
+    for (const kcal of [1200, 1500, 2000, 2600, 3500]) {
+      for (const weight of [45, 70, 100, 140, 200]) {
+        for (const goal of ['lose', 'maintain', 'gain'] as const) {
+          const split = calculateMacroSplit(kcal, weight, goal);
+          const share = (split.proteinGTarget * KCAL_PER_G.protein) / kcal;
+          assert.ok(
+            share <= 0.351,
+            `${goal} ${weight}kg on ${kcal}: protein took ${Math.round(share * 100)}%`,
+          );
+        }
+      }
+    }
+  });
+
   test('an impossible target compresses instead of overshooting', () => {
     // A very heavy person on a very low target: protein and fat alone exceed it.
     const split = calculateMacroSplit(1200, 150, 'lose');
     assert.equal(split.compressed, true);
+    assert.equal(split.proteinCapped, true, 'both rules can bind at once');
     assert.equal(split.carbsGTarget, 0);
     const kcal =
       split.proteinGTarget * 4 + split.carbsGTarget * 4 + split.fatGTarget * 9;
