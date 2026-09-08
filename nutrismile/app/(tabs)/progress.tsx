@@ -15,6 +15,7 @@ export default function ProgressScreen() {
     <View
       style={{
         flex: 1,
+        backgroundColor: palette.background,
         paddingTop: insets.top + spacing.lg,
         paddingHorizontal: spacing.lg,
         gap: spacing.xl,

@@ -130,6 +130,7 @@ function PermissionScreen({
     <View
       style={{
         flex: 1,
+        backgroundColor: palette.background,
         paddingTop: insetTop + spacing.lg,
         paddingHorizontal: spacing.lg,
         gap: spacing.xl,

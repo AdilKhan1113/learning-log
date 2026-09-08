@@ -18,6 +18,7 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView
+      style={{ backgroundColor: palette.background }}
       contentContainerStyle={{
         paddingTop: insets.top + spacing.lg,
         paddingHorizontal: spacing.lg,

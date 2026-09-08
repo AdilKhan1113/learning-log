@@ -8,7 +8,7 @@
  */
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -16,6 +16,27 @@ import { Text } from '../src/ui/components/Text.tsx';
 import { Button } from '../src/ui/components/Button.tsx';
 import { palette, spacing } from '../src/ui/theme/index.ts';
 import { useSession } from '../src/state/session.ts';
+
+/**
+ * React Navigation paints every screen with its own theme, and that theme wins
+ * over a background set further up the tree. Without this the navigator paints
+ * its default light scene behind the app and the dark text disappears into it.
+ *
+ * Defining it here rather than per-screen means headers, card backgrounds and
+ * the gaps between screens during a transition all match too.
+ */
+const navigationTheme: ReactNavigation.Theme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: palette.background,
+    card: palette.surface,
+    text: palette.text,
+    border: palette.border,
+    primary: palette.accent,
+    notification: palette.accent,
+  },
+};
 
 export default function RootLayout() {
   const { status, profile, error, load } = useSession();
@@ -40,26 +61,28 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: palette.background }}>
       <SafeAreaProvider>
-        <StatusBar style="light" />
-        {status === 'error' ? (
-          <StartupError message={error} onRetry={() => void load()} />
-        ) : status === 'ready' ? (
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: palette.background },
-            }}
-          >
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="onboarding" />
-            <Stack.Screen name="modals/log-food" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="modals/create-food" options={{ presentation: 'modal' }} />
-          </Stack>
-        ) : (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <ActivityIndicator color={palette.accent} />
-          </View>
-        )}
+        <ThemeProvider value={navigationTheme}>
+          <StatusBar style="light" />
+          {status === 'error' ? (
+            <StartupError message={error} onRetry={() => void load()} />
+          ) : status === 'ready' ? (
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: palette.background },
+              }}
+            >
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="onboarding" />
+              <Stack.Screen name="modals/log-food" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="modals/create-food" options={{ presentation: 'modal' }} />
+            </Stack>
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator color={palette.accent} />
+            </View>
+          )}
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

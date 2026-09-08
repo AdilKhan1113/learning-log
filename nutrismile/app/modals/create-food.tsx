@@ -99,6 +99,7 @@ export default function CreateFoodModal() {
 
   return (
     <ScrollView
+      style={{ backgroundColor: palette.background }}
       contentContainerStyle={{ padding: spacing.lg, gap: spacing.xl, paddingBottom: spacing.xxxl }}
       keyboardShouldPersistTaps="handled"
     >

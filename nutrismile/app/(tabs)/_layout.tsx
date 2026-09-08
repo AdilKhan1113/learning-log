@@ -42,6 +42,9 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // The navigator paints behind each tab, so this has to be set here as
+        // well as in the navigation theme.
+        sceneStyle: { backgroundColor: palette.background },
         tabBarActiveTintColor: palette.accent,
         tabBarInactiveTintColor: palette.textTertiary,
         tabBarStyle: {

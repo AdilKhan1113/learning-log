@@ -79,7 +79,10 @@ export default function LogFoodModal() {
   }
 
   return (
-    <ScrollView contentContainerStyle={{ paddingBottom: spacing.xxxl }}>
+    <ScrollView
+      style={{ backgroundColor: palette.background }}
+      contentContainerStyle={{ paddingBottom: spacing.xxxl }}
+    >
       {saving ? (
         <View style={{ padding: spacing.lg }}>
           <Text variant="caption" color={palette.textSecondary}>

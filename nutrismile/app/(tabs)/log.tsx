@@ -29,7 +29,13 @@ export default function LogScreen() {
   const [focused, setFocused] = useState(false);
 
   return (
-    <View style={{ flex: 1, paddingTop: insets.top + spacing.lg }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: palette.background,
+        paddingTop: insets.top + spacing.lg,
+      }}
+    >
       <View style={{ paddingHorizontal: spacing.lg, gap: spacing.md }}>
         <Text variant="title">Log food</Text>
         <TextInput

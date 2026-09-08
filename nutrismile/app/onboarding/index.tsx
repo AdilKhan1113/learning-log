@@ -51,6 +51,7 @@ export default function OnboardingScreen() {
 
   return (
     <ScrollView
+      style={{ backgroundColor: palette.background }}
       contentContainerStyle={{
         paddingTop: insets.top + spacing.xl,
         paddingHorizontal: spacing.lg,
