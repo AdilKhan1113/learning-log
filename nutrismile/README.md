@@ -8,8 +8,8 @@ connection returns.
 
 ## Status
 
-**Phases 1–3 complete.** Logging, the dashboard, search against Open Food
-Facts with local caching, and barcode scanning.
+**Phases 1–4 complete.** Logging, the dashboard, search against Open Food
+Facts with local caching, barcode scanning, and photo estimation.
 
 Nothing has run on a device yet, so the camera path is compiled and unit-tested
 but not hardware-verified — see `docs/barcode-scanning.md`.
@@ -19,7 +19,7 @@ but not hardware-verified — see `docs/barcode-scanning.md`.
 | 1 | data model, manual logging, dashboard | done |
 | 2 | food database search and caching | done |
 | 3 | barcode scanning, USDA fallback | done (untested on hardware) |
-| 4 | photo estimation | not started |
+| 4 | photo estimation | done (untested on hardware) |
 | 5 | progress charts, sync, polish | schema and outbox ready; nothing drains them yet |
 
 The Scan and Progress tabs say what they will do rather than showing a camera
@@ -51,9 +51,9 @@ and native type stripping, against `node:sqlite`.
 
 ## Verified
 
-- 307 tests passing.
+- 358 tests passing.
 - `tsc --noEmit` clean across all source files.
-- `expo export` bundles: 1771 modules to a Hermes bytecode bundle.
+- `expo export` bundles: 1781 modules to a Hermes bytecode bundle.
 
 Open Food Facts itself is blocked by this environment's network policy, so the
 client is tested against fixtures with an injected `fetch`, not live responses.
@@ -65,6 +65,7 @@ client is tested against fixtures with an injected `fetch`, not live responses.
 `docs/schema.md` explains the data model and why it is shaped this way.
 `docs/food-database.md` covers search, caching and the OFF mapping rules.
 `docs/barcode-scanning.md` covers the scan pipeline and where the API keys live.
+`docs/photo-estimation.md` covers the vision estimator, its validation and its cost.
 The schema itself is `src/db/schema/001_init.sql`.
 
 ## Conventions

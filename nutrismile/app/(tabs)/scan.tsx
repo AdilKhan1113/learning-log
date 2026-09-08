@@ -9,7 +9,7 @@
  * Photo estimation joins this screen in Phase 4.
  */
 import { useCallback, useState } from 'react';
-import { Linking, Platform, Pressable, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -17,9 +17,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../src/ui/components/Text.tsx';
 import { Button } from '../../src/ui/components/Button.tsx';
 import { Card } from '../../src/ui/components/Card.tsx';
-import { palette, spacing } from '../../src/ui/theme/index.ts';
+import { HIT_SIZE, palette, spacing } from '../../src/ui/theme/index.ts';
 import { useBarcodeLookup } from '../../src/features/scanner/useBarcodeLookup.ts';
 import { ScannerOverlay } from '../../src/features/scanner/ScannerOverlay.tsx';
+import { useMealEstimate } from '../../src/features/photo/useMealEstimate.ts';
+import { EstimateReview } from '../../src/features/photo/EstimateReview.tsx';
+import { useSession } from '../../src/state/session.ts';
 
 /** The symbologies on food packaging. Narrowing this list keeps the decoder
  *  from spending time on QR and postal codes that will never be food. */
@@ -31,6 +34,8 @@ export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const { state, handleScan, reset } = useBarcodeLookup();
   const [active, setActive] = useState(true);
+  const profile = useSession((s) => s.profile);
+  const photo = useMealEstimate();
 
   // Stop the camera when the tab is left. A camera running behind another
   // screen drains the battery and shows a recording indicator for no reason.
@@ -40,9 +45,27 @@ export default function ScanScreen() {
       return () => {
         setActive(false);
         reset();
+        photo.reset();
       };
-    }, [reset]),
+    }, [reset, photo]),
   );
+
+  // The photo flow takes over the whole screen once it starts: an estimate
+  // being reviewed must not sit behind a running camera.
+  if (photo.stage.status !== 'idle') {
+    return (
+      <PhotoFlow
+        photo={photo}
+        insetTop={insets.top}
+        userId={profile?.id ?? null}
+        onDone={() => router.push('/')}
+        onSearchInstead={() => {
+          photo.reset();
+          router.push('/log');
+        }}
+      />
+    );
+  }
 
   if (!permission) {
     // Permissions are still being read; nothing useful to show yet.
@@ -102,8 +125,127 @@ export default function ScanScreen() {
           }}
           onScanAgain={reset}
         />
+
+        {/* Photo estimation lives alongside the barcode scanner rather than on
+            its own tab: both answer "what am I about to eat", and the fewest
+            taps to a logged meal is the point of the whole screen. */}
+        <View
+          style={{
+            position: 'absolute',
+            left: spacing.lg,
+            right: spacing.lg,
+            top: spacing.md,
+            flexDirection: 'row',
+            justifyContent: 'center',
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Estimate a meal from a photo"
+            onPress={() => void photo.captureAndEstimate('camera')}
+            style={({ pressed }) => ({
+              minHeight: HIT_SIZE,
+              paddingHorizontal: spacing.xl,
+              justifyContent: 'center',
+              borderRadius: 999,
+              backgroundColor: palette.surface,
+              opacity: pressed ? 0.7 : 0.92,
+            })}
+          >
+            <Text variant="label">Photograph a meal instead</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
+  );
+}
+
+/**
+ * The photo path: estimating, reviewing, or explaining why it could not run.
+ */
+function PhotoFlow({
+  photo,
+  insetTop,
+  userId,
+  onDone,
+  onSearchInstead,
+}: {
+  photo: ReturnType<typeof useMealEstimate>;
+  insetTop: number;
+  userId: string | null;
+  onDone: () => void;
+  onSearchInstead: () => void;
+}) {
+  const { stage } = photo;
+
+  if (stage.status === 'estimating') {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: palette.background,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: spacing.lg,
+          padding: spacing.xl,
+        }}
+      >
+        <ActivityIndicator color={palette.accent} />
+        <Text variant="body" color={palette.textSecondary} center>
+          Working out what's on the plate. This takes a few seconds.
+        </Text>
+        <Button title="Cancel" variant="ghost" onPress={photo.reset} />
+      </View>
+    );
+  }
+
+  if (stage.status === 'failed') {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: palette.background,
+          justifyContent: 'center',
+          gap: spacing.lg,
+          padding: spacing.xl,
+        }}
+      >
+        <Text variant="heading" center>
+          No estimate this time
+        </Text>
+        <Text variant="body" color={palette.textSecondary} center>
+          {stage.message}
+        </Text>
+        <Button title="Try another photo" fullWidth onPress={() => void photo.captureAndEstimate('camera')} />
+        <Button title="Search for it instead" variant="secondary" fullWidth onPress={onSearchInstead} />
+        <Button title="Back to scanning" variant="ghost" fullWidth onPress={photo.reset} />
+      </View>
+    );
+  }
+
+  // The caller only renders this once the flow has started, but the idle case
+  // has to be handled for the type to narrow to a reviewable estimate.
+  if (stage.status !== 'reviewing') return null;
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: palette.background }}
+      contentContainerStyle={{ paddingTop: insetTop, paddingBottom: spacing.xxxl }}
+      keyboardShouldPersistTaps="handled"
+    >
+      <EstimateReview
+        estimate={stage.estimate}
+        saving={photo.saving}
+        onSetPortion={photo.setPortion}
+        onRemove={photo.removeFood}
+        onDiscard={photo.reset}
+        onConfirm={async (meal) => {
+          if (!userId) return;
+          const logged = await photo.confirm(userId, meal);
+          if (logged > 0) onDone();
+        }}
+      />
+    </ScrollView>
   );
 }
 
