@@ -9,9 +9,9 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:schema": "node tests/db/schema.smoke.mjs"
+    "test": "node --test tests/domain/*.test.ts && node tests/db/schema.smoke.mjs",
+    "test:schema": "node tests/db/schema.smoke.mjs",
+    "test:domain": "node --test tests/domain/*.test.ts"
   },
   "dependencies": {
     "expo": "~54.0.0",
@@ -36,7 +36,6 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "typescript": "~5.9.0",
-    "vitest": "^3.0.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~10.0.0"
   }
