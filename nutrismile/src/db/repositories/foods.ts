@@ -3,12 +3,14 @@
  * database. Search runs in two stages — FTS narrows, then the pure ranker in
  * src/domain/search orders.
  */
+import type { Database } from '../client.ts';
 import { getDatabase } from '../client.ts';
 import type { FoodPortionRow, FoodRow } from '../types.ts';
 import type { FoodLike } from '../../domain/types.ts';
 import { buildSearchText } from '../../domain/search/normalize.ts';
 import { type RankedFood, rankFoods, toFtsQuery } from '../../domain/search/rank.ts';
 import { newId } from '../../utils/ids.ts';
+import type { MappedFood } from '../../services/openfoodfacts/normalize.ts';
 import { toFoodLike } from './mappers.ts';
 import { enqueue } from './sync.ts';
 
@@ -221,4 +223,180 @@ export async function remove(id: string): Promise<void> {
     );
     await enqueue(db, 'foods', id, 'delete');
   });
+}
+
+
+// --- catalogue cache ---------------------------------------------------------
+
+/**
+ * Cached rows are kept for this long after being fetched. A row that has been
+ * logged, favourited, or used in a recipe is never pruned regardless of age.
+ */
+export const CACHE_TTL_DAYS = 60;
+
+/**
+ * Write products fetched from an upstream database into the local catalogue.
+ *
+ * Cached rows are shared rather than user-owned (user_id IS NULL), so a food
+ * looked up once is instantly available afterwards — including offline, and
+ * including the Phase 3 barcode scan, since the OFF code is the barcode.
+ *
+ * An existing row is refreshed in place so its id stays stable: log entries
+ * point at it for "log again", and the user may have favourited it. The
+ * columns that belong to this device — is_favorite, last_used_at, use_count —
+ * are never overwritten by a refresh.
+ *
+ * Cached rows are deliberately not queued for sync. They are reproducible from
+ * the upstream database, so pushing them would spend the user's bandwidth
+ * replicating a public catalogue.
+ */
+export async function cacheProducts(
+  products: readonly MappedFood[],
+  source: 'openfoodfacts' | 'usda' | 'nutritionix' = 'openfoodfacts',
+): Promise<{ inserted: number; refreshed: number }> {
+  if (products.length === 0) return { inserted: 0, refreshed: 0 };
+
+  const db = await getDatabase();
+  const now = Date.now();
+  let inserted = 0;
+  let refreshed = 0;
+
+  await db.withTransactionAsync(async () => {
+    for (const product of products) {
+      const existing = await db.getFirstAsync<{ id: string }>(
+        `SELECT id FROM foods
+         WHERE source = ? AND source_id = ? AND deleted_at IS NULL`,
+        source,
+        product.sourceId,
+      );
+
+      if (existing) {
+        await db.runAsync(
+          `UPDATE foods SET
+             name = ?, brand = ?, search_text = ?, barcode = ?, basis_unit = ?,
+             kcal_per_100 = ?, protein_g_per_100 = ?, carbs_g_per_100 = ?,
+             fat_g_per_100 = ?, fiber_g_per_100 = ?, sugar_g_per_100 = ?,
+             sat_fat_g_per_100 = ?, sodium_mg_per_100 = ?, updated_at = ?
+           WHERE id = ?`,
+          product.name,
+          product.brand,
+          buildSearchText(product.name, product.brand),
+          product.barcode,
+          product.basisUnit,
+          product.kcalPer100,
+          product.proteinGPer100,
+          product.carbsGPer100,
+          product.fatGPer100,
+          product.fiberGPer100,
+          product.sugarGPer100,
+          product.satFatGPer100,
+          product.sodiumMgPer100,
+          now,
+          existing.id,
+        );
+        await insertMissingPortions(db, existing.id, product, now);
+        refreshed++;
+        continue;
+      }
+
+      const id = newId();
+      await db.runAsync(
+        `INSERT INTO foods (
+           id, user_id, name, brand, search_text, source, source_id, barcode,
+           basis_unit, kcal_per_100, protein_g_per_100, carbs_g_per_100,
+           fat_g_per_100, fiber_g_per_100, sugar_g_per_100, sat_fat_g_per_100,
+           sodium_mg_per_100, created_at, updated_at, dirty
+         ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        id,
+        product.name,
+        product.brand,
+        buildSearchText(product.name, product.brand),
+        source,
+        product.sourceId,
+        product.barcode,
+        product.basisUnit,
+        product.kcalPer100,
+        product.proteinGPer100,
+        product.carbsGPer100,
+        product.fatGPer100,
+        product.fiberGPer100,
+        product.sugarGPer100,
+        product.satFatGPer100,
+        product.sodiumMgPer100,
+        now,
+        now,
+      );
+      await insertMissingPortions(db, id, product, now);
+      inserted++;
+    }
+  });
+
+  return { inserted, refreshed };
+}
+
+/**
+ * Add the product's serving as a portion, but only if the food has none.
+ *
+ * Replacing portions on every refresh would churn ids that recipe ingredients
+ * point at, for information that rarely changes.
+ */
+async function insertMissingPortions(
+  db: Database,
+  foodId: string,
+  product: MappedFood,
+  now: number,
+): Promise<void> {
+  if (product.portions.length === 0) return;
+
+  const existing = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) AS count FROM food_portions WHERE food_id = ? AND deleted_at IS NULL',
+    foodId,
+  );
+  if ((existing?.count ?? 0) > 0) return;
+
+  let sortOrder = 0;
+  for (const portion of product.portions) {
+    await db.runAsync(
+      `INSERT INTO food_portions (
+         id, food_id, label, quantity, amount_in_basis, is_default,
+         sort_order, created_at, updated_at, dirty
+       ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, 0)`,
+      newId(),
+      foodId,
+      portion.label,
+      portion.amountInBasis,
+      sortOrder === 0 ? 1 : 0,
+      sortOrder,
+      now,
+      now,
+    );
+    sortOrder++;
+  }
+}
+
+/**
+ * Drop stale catalogue rows so a year of searching does not leave thousands of
+ * foods the user never chose.
+ *
+ * Only untouched rows go: anything logged, favourited, or referenced by an
+ * entry or a recipe stays, whatever its age. Custom foods are never pruned.
+ */
+export async function pruneCache(olderThanDays = CACHE_TTL_DAYS): Promise<number> {
+  const db = await getDatabase();
+  const cutoff = Date.now() - olderThanDays * 86_400_000;
+
+  const result = await db.runAsync(
+    `DELETE FROM foods
+     WHERE user_id IS NULL
+       AND source <> 'custom'
+       AND is_favorite = 0
+       AND last_used_at IS NULL
+       AND use_count = 0
+       AND created_at < ?
+       AND NOT EXISTS (SELECT 1 FROM log_entries WHERE log_entries.food_id = foods.id)
+       AND NOT EXISTS (SELECT 1 FROM recipe_ingredients WHERE recipe_ingredients.food_id = foods.id)`,
+    cutoff,
+  );
+
+  return result.changes;
 }

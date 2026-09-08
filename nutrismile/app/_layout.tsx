@@ -53,6 +53,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="onboarding" />
             <Stack.Screen name="modals/log-food" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="modals/create-food" options={{ presentation: 'modal' }} />
           </Stack>
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>

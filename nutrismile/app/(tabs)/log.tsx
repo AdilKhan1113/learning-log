@@ -24,9 +24,8 @@ export default function LogScreen() {
   const meal = (params.meal as Meal) ?? 'snacks';
 
   const profile = useSession((s) => s.profile);
-  const { query, setQuery, mode, results, loading, error, reload } = useFoodSearch(
-    profile?.id ?? null,
-  );
+  const { query, setQuery, mode, results, loading, remoteStatus, remoteNotice, error, reload } =
+    useFoodSearch(profile?.id ?? null);
   const [focused, setFocused] = useState(false);
 
   return (
@@ -65,14 +64,34 @@ export default function LogScreen() {
           paddingBottom: spacing.xxxl,
         }}
         ListHeaderComponent={
-          mode === 'recent' && results.length > 0 ? (
-            <Text
-              variant="caption"
-              color={palette.textSecondary}
-              style={{ marginBottom: spacing.sm }}
+          <View style={{ gap: spacing.sm, marginBottom: spacing.sm }}>
+            {mode === 'recent' && results.length > 0 ? (
+              <Text variant="caption" color={palette.textSecondary}>
+                Recent
+              </Text>
+            ) : null}
+            {remoteNotice ? (
+              <Text variant="caption" color={palette.textSecondary}>
+                {remoteNotice}
+              </Text>
+            ) : null}
+          </View>
+        }
+        ListFooterComponent={
+          remoteStatus === 'searching' ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.sm,
+                paddingVertical: spacing.lg,
+              }}
             >
-              Recent
-            </Text>
+              <ActivityIndicator color={palette.textTertiary} size="small" />
+              <Text variant="caption" color={palette.textTertiary}>
+                Searching the food database
+              </Text>
+            </View>
           ) : null
         }
         ListEmptyComponent={
@@ -84,14 +103,22 @@ export default function LogScreen() {
               body={error}
               action={<Button title="Try again" variant="secondary" onPress={() => void reload()} />}
             />
-          ) : query.trim() ? (
+          ) : remoteStatus === 'searching' ? null : query.trim() ? (
             <EmptyState
               title={`No matches for "${query.trim()}"`}
-              body="You can add it as a custom food and it'll be there next time."
+              body={
+                remoteStatus === 'failed'
+                  ? 'Your own foods had no match, and the food database is out of reach right now. You can add it yourself.'
+                  : "Nothing in your foods or the food database. You can add it and it'll be there next time."
+              }
               action={
                 <Button
                   title="Create a food"
-                  onPress={() => router.push(`/modals/log-food?meal=${meal}&name=${encodeURIComponent(query.trim())}`)}
+                  onPress={() =>
+                    router.push(
+                      `/modals/create-food?meal=${meal}&name=${encodeURIComponent(query.trim())}`,
+                    )
+                  }
                 />
               }
             />

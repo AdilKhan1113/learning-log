@@ -6,7 +6,7 @@
  * disagree with the database.
  */
 import { create } from 'zustand';
-import { goals, users } from '../db/repositories/index.ts';
+import { foods, goals, users } from '../db/repositories/index.ts';
 import type { DailyGoal } from '../db/repositories/goals.ts';
 import type { Profile } from '../db/repositories/users.ts';
 import { today } from '../utils/dates.ts';
@@ -36,6 +36,11 @@ export const useSession = create<SessionState>((set, get) => ({
       const profile = await users.current();
       const goal = profile ? await goals.forDate(profile.id, today()) : null;
       set({ profile, goal, status: 'ready' });
+
+      // Catalogue rows the user never touched are dropped in the background.
+      // Failing to prune is not worth telling anyone about, and never blocks
+      // the app opening.
+      void foods.pruneCache().catch(() => {});
     } catch (error) {
       set({
         status: 'error',

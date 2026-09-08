@@ -8,14 +8,14 @@ connection returns.
 
 ## Status
 
-**Phase 1 complete.** Data model, manual food logging and the dashboard work
-end to end.
+**Phases 1 and 2 complete.** Logging, the dashboard, and search against Open
+Food Facts with local caching all work end to end.
 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | data model, manual logging, dashboard | done |
-| 2 | food database search and caching | search is built; the remote catalogue is not |
-| 3 | barcode scanning | not started |
+| 2 | food database search and caching | done |
+| 3 | barcode scanning, USDA fallback | not started |
 | 4 | photo estimation | not started |
 | 5 | progress charts, sync, polish | schema and outbox ready; nothing drains them yet |
 
@@ -32,7 +32,7 @@ npm start
 ## Checks
 
 ```bash
-npm test          # schema sync, 123 domain tests, repository SQL, schema smoke
+npm test          # schema sync, domain + service tests, repository SQL, schema smoke
 npm run typecheck # tsc --noEmit
 ```
 
@@ -41,14 +41,19 @@ and native type stripping, against `node:sqlite`.
 
 ## Verified
 
-- 161 tests passing.
-- `tsc --noEmit` clean across all 30 source files.
-- `expo export` bundles: 1544 modules to a Hermes bytecode bundle.
+- 227 tests passing.
+- `tsc --noEmit` clean across all source files.
+- `expo export` bundles: 1549 modules to a Hermes bytecode bundle.
+
+Open Food Facts itself is blocked by this environment's network policy, so the
+client is tested against fixtures with an injected `fetch`, not live responses.
+`docs/food-database.md` says what to spot-check on a real device.
 
 ## Where things are
 
 `docs/architecture.md` walks the folder tree and the rules it enforces.
 `docs/schema.md` explains the data model and why it is shaped this way.
+`docs/food-database.md` covers search, caching and the OFF mapping rules.
 The schema itself is `src/db/schema/001_init.sql`.
 
 ## Conventions

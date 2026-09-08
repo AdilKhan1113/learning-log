@@ -9,9 +9,9 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
-    "test": "npm run check:schema && node --test tests/domain/*.test.ts tests/db/*.test.mjs && node tests/db/schema.smoke.mjs",
+    "test": "npm run check:schema && node --test tests/domain/*.test.ts tests/services/*.test.ts tests/db/*.test.mjs && node tests/db/schema.smoke.mjs",
     "test:schema": "node tests/db/schema.smoke.mjs",
-    "test:domain": "node --test tests/domain/*.test.ts",
+    "test:domain": "node --test tests/domain/*.test.ts tests/services/*.test.ts",
     "build:schema": "node scripts/build-schema.mjs",
     "check:schema": "node scripts/build-schema.mjs --check",
     "test:sql": "node --test tests/db/*.test.mjs"
