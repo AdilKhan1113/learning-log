@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "NutriSmile",
+    "slug": "nutrismile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "nutrismile",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.nutrismile.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "NutriSmile uses the camera to scan barcodes and photograph meals."
+      }
+    },
+    "android": {
+      "package": "com.nutrismile.app",
+      "permissions": ["CAMERA"],
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "NutriSmile uses the camera to scan barcodes and photograph meals."
+        }
+      ]
+    ],
+    "extra": {
+      "comment": "Public config only. API keys live in Supabase Edge Function secrets, never here."
+    }
+  }
+}
