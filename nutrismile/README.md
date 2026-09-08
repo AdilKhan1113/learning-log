@@ -27,10 +27,17 @@ or a chart that cannot yet work.
 
 ## Getting started
 
+Built on **Expo SDK 57**, which is what current Expo Go supports — the SDK has
+to match, since Expo Go only ever runs the latest one.
+
 ```bash
-npm install
+npm ci
 npm start
 ```
+
+Then scan the QR code with Expo Go (Android) or the Camera app (iOS). Phone and
+computer need to be on the same network; `npm start -- --tunnel` routes around
+it when they are not.
 
 ## Checks
 
@@ -46,7 +53,7 @@ and native type stripping, against `node:sqlite`.
 
 - 307 tests passing.
 - `tsc --noEmit` clean across all source files.
-- `expo export` bundles: 1567 modules to a Hermes bytecode bundle.
+- `expo export` bundles: 1771 modules to a Hermes bytecode bundle.
 
 Open Food Facts itself is blocked by this environment's network policy, so the
 client is tested against fixtures with an injected `fetch`, not live responses.
