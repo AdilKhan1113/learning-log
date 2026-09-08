@@ -9,7 +9,10 @@ import {
   calculateCalorieTarget,
   calculateMacroSplit,
   calorieFloor,
+  completeMetrics,
+  listMissing,
   macroPercentages,
+  missingMetrics,
   suggestTargets,
   targetsFromPercentages,
   validateManualTarget,
@@ -346,5 +349,63 @@ describe('suggestTargets', () => {
     assert.ok(result.tdee > result.bmr);
     assert.ok(result.proteinGTarget > 0);
     assert.equal(typeof result.floorApplied, 'boolean');
+  });
+});
+
+describe('recalculating from a profile', () => {
+  const complete = {
+    sex: 'male' as const,
+    ageYears: 31,
+    heightCm: 178,
+    weightKg: 117,
+    activityLevel: 'sedentary' as const,
+    goalType: 'lose' as const,
+  };
+
+  test('a complete profile is missing nothing', () => {
+    assert.deepEqual(missingMetrics(complete), []);
+    assert.ok(completeMetrics(complete) !== null);
+  });
+
+  test('names each missing input in the user’s words', () => {
+    assert.deepEqual(missingMetrics({ ...complete, weightKg: null }), ['a recent weight']);
+    assert.deepEqual(missingMetrics({ ...complete, sex: null }), ['sex']);
+    assert.deepEqual(missingMetrics({ ...complete, ageYears: null }), ['year of birth']);
+  });
+
+  test('reports every missing input, not just the first', () => {
+    const missing = missingMetrics({
+      sex: null,
+      ageYears: null,
+      heightCm: null,
+      weightKg: null,
+      activityLevel: null,
+      goalType: null,
+    });
+    assert.equal(missing.length, 6);
+  });
+
+  test('zero and nonsense count as missing, not as values', () => {
+    assert.ok(missingMetrics({ ...complete, heightCm: 0 }).includes('height'));
+    assert.ok(missingMetrics({ ...complete, weightKg: -5 }).includes('a recent weight'));
+    assert.ok(missingMetrics({ ...complete, ageYears: Number.NaN }).includes('year of birth'));
+  });
+
+  test('an incomplete profile yields no metrics rather than partial ones', () => {
+    assert.equal(completeMetrics({ ...complete, heightCm: null }), null);
+  });
+
+  test('missing inputs read as a sentence', () => {
+    assert.equal(listMissing([]), '');
+    assert.equal(listMissing(['height']), 'height');
+    assert.equal(listMissing(['height', 'goal']), 'height and goal');
+    assert.equal(listMissing(['sex', 'height', 'goal']), 'sex, height and goal');
+  });
+
+  test('a recalculation uses the same rules as onboarding', () => {
+    const metrics = completeMetrics(complete)!;
+    const targets = suggestTargets(metrics, complete.goalType);
+    assert.ok(targets.calorieTarget > 0);
+    assert.equal(targets.proteinCapped, true, 'the cap applies on recalculation too');
   });
 });

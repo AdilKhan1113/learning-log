@@ -345,3 +345,53 @@ function clamp(value: number, min: number, max: number): number {
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
+
+// --- recalculating from a profile ---------------------------------------------
+
+/** Metrics as a profile holds them: any of them may not have been given yet. */
+export interface PartialMetrics {
+  sex: Sex | null;
+  ageYears: number | null;
+  heightCm: number | null;
+  weightKg: number | null;
+  activityLevel: ActivityLevel | null;
+  goalType: GoalType | null;
+}
+
+/**
+ * What is missing before a target can be calculated, in the user's words.
+ *
+ * Returned as labels rather than field names so the screen can say "add a
+ * recent weight" instead of disabling a button with no explanation.
+ */
+export function missingMetrics(input: PartialMetrics): string[] {
+  const missing: string[] = [];
+  if (!input.sex) missing.push('sex');
+  if (input.ageYears === null || !Number.isFinite(input.ageYears) || input.ageYears <= 0) {
+    missing.push('year of birth');
+  }
+  if (!input.heightCm || input.heightCm <= 0) missing.push('height');
+  if (!input.weightKg || input.weightKg <= 0) missing.push('a recent weight');
+  if (!input.activityLevel) missing.push('activity level');
+  if (!input.goalType) missing.push('goal');
+  return missing;
+}
+
+/** The metrics as a complete set, or null when something is still missing. */
+export function completeMetrics(input: PartialMetrics): BodyMetrics | null {
+  if (missingMetrics(input).length > 0) return null;
+  return {
+    sex: input.sex!,
+    ageYears: input.ageYears!,
+    heightCm: input.heightCm!,
+    weightKg: input.weightKg!,
+    activityLevel: input.activityLevel!,
+  };
+}
+
+/** Join labels the way a sentence would: "height, weight and goal". */
+export function listMissing(missing: readonly string[]): string {
+  if (missing.length === 0) return '';
+  if (missing.length === 1) return missing[0]!;
+  return `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`;
+}
