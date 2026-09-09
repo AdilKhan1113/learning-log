@@ -7,9 +7,10 @@
  * with sync switched off entirely.
  */
 import { create } from 'zustand';
-import { ensureSignedIn, isConfigured } from '../services/supabase/client.ts';
+import { deleteAccount, ensureSignedIn, isConfigured } from '../services/supabase/client.ts';
 import { pendingCount, sync } from '../services/sync/engine.ts';
 import { users } from '../db/repositories/index.ts';
+import { resetDatabase } from '../db/client.ts';
 
 export type SyncStatus =
   | 'disabled'
@@ -27,6 +28,14 @@ export interface SyncState {
   start: (localUserId: string) => Promise<void>;
   syncNow: (userId: string) => Promise<void>;
   refreshPending: () => Promise<void>;
+  /**
+   * Delete the cloud account and wipe this device.
+   *
+   * Server first: if the local data went first and the server call then
+   * failed, the user would be left with nothing on the device and an account
+   * they could no longer reach to delete.
+   */
+  deleteEverything: () => Promise<{ ok: boolean; message: string }>;
 }
 
 export const useSync = create<SyncState>((set, get) => ({
@@ -71,5 +80,14 @@ export const useSync = create<SyncState>((set, get) => ({
 
   refreshPending: async () => {
     set({ pending: await pendingCount() });
+  },
+
+  deleteEverything: async () => {
+    const remote = await deleteAccount();
+    if (!remote.ok) return remote;
+
+    await resetDatabase();
+    set({ status: isConfigured() ? 'signed_out' : 'disabled', lastSyncedAt: null, pending: 0, message: null });
+    return { ok: true, message: 'Everything has been deleted.' };
   },
 }));

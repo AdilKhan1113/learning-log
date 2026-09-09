@@ -12,6 +12,7 @@
  * fallback is a feature that is not there yet, not an error to show anyone.
  */
 import { type Result, err, ok } from '../../domain/result.ts';
+import { getAccessToken } from '../supabase/client.ts';
 import type { MappedFood } from '../openfoodfacts/normalize.ts';
 import { mapUsdaFood, selectByBarcode } from './normalize.ts';
 import type { UsdaSearchResponse } from './types.ts';
@@ -27,6 +28,7 @@ const TIMEOUT_MS = 8000;
 
 export type FallbackError =
   | { code: 'unavailable' }
+  | { code: 'signed_out' }
   | { code: 'offline' }
   | { code: 'timeout' }
   | { code: 'http'; status: number }
@@ -36,6 +38,8 @@ export function describeFallbackError(error: FallbackError): string {
   switch (error.code) {
     case 'unavailable':
       return 'The backup food database isn’t set up yet.';
+    case 'signed_out':
+      return 'The backup food database needs your device to finish setting up.';
     case 'offline':
       return 'The backup food database is unreachable offline.';
     case 'timeout':
@@ -61,6 +65,8 @@ interface FetchOptions {
   /** Injected in tests so the proxy can be exercised without a deployment. */
   baseUrl?: string;
   anonKey?: string;
+  /** The caller's access token. Read from the session when not given. */
+  accessToken?: string;
 }
 
 /**
@@ -76,6 +82,10 @@ export async function lookupBarcode(
   const fetchImpl = options.fetchImpl ?? fetch;
 
   if (!baseUrl || !anonKey) return err({ code: 'unavailable' });
+
+  const accessToken = options.accessToken ?? (await getAccessToken());
+  if (!accessToken) return err({ code: 'signed_out' });
+
   const first = candidates[0];
   if (!first) return ok(null);
 
@@ -89,7 +99,9 @@ export async function lookupBarcode(
       signal: controller.signal,
       headers: {
         Accept: 'application/json',
-        Authorization: `Bearer ${anonKey}`,
+        // The user's own token, not the anon key: the function needs to
+        // know who is calling, and the anon key ships in the bundle.
+        Authorization: `Bearer ${accessToken}`,
         apikey: anonKey,
       },
     });

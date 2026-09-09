@@ -95,10 +95,50 @@ Two divergences from the local schema, both deliberate:
 On pull, column names come from the device's own schema via `PRAGMA table_info`,
 never from the payload, so a remote row cannot introduce a column.
 
+## Who may call the Edge Functions
+
+The anon key ships inside the installable bundle and can be extracted from it,
+so "holds a valid anon key" is evidence of nothing. Supabase checks that a
+request carries *a* valid JWT, and the anon key is one — which means the default
+posture leaves a paid endpoint open to anyone who unpacks the app.
+
+Both functions therefore require a signed-in user's token specifically, verified
+against the auth server rather than decoded locally, and the app sends its
+session token rather than the anon key. `estimate-meal` additionally counts
+calls per user per day (`VISION_DAILY_LIMIT`, default 30) in a table only the
+service role can touch — with no RLS policies at all, so a user cannot read,
+reset, or inflate their own counter. The increment is a single database
+statement, so two requests arriving together cannot both read the same count and
+each conclude they are under the limit.
+
+The count is taken *before* the model call, so a failed estimate still spends an
+allowance. Otherwise forcing failures would be an unlimited retry loop.
+
+## Deleting an account
+
+Google Play requires any app that creates accounts to offer deletion, and
+anonymous sign-in creates one. `delete-account` removes the auth user with the
+service role — a user cannot delete their own auth record — taking the id from
+the verified token and never from the request body, so it cannot be pointed at
+somebody else's account. Everything else follows by cascade: `users.id`
+references `auth.users`, and every table cascades from `users`.
+
+Locally, the database file is deleted rather than emptied table by table. A
+DELETE per table can miss one as the schema grows, and "we deleted your data"
+has to be true without qualification.
+
+The server goes first. If the local wipe ran first and the server call then
+failed, the user would be left with nothing on the device and an account they
+could no longer reach to delete.
+
+**Still missing for Play:** a web-accessible deletion route. Google requires one
+that works without installing the app, and this is in-app only.
+
 ## Deploying it
 
 ```bash
-supabase db push          # applies supabase/migrations/
+supabase db push                              # tables, policies, usage counter
+supabase functions deploy delete-account      # alongside the other two
 ```
 
 Anonymous sign-ins must also be enabled: **Dashboard → Authentication →

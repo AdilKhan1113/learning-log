@@ -2,7 +2,9 @@
  * Profile. Shows the target and the workings behind it, so a number the app
  * chose can be understood rather than just accepted.
  */
-import { ScrollView, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, ScrollView, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../src/ui/components/Text.tsx';
 import { Card } from '../../src/ui/components/Card.tsx';
@@ -25,6 +27,8 @@ export default function ProfileScreen() {
   const refresh = useSession((s) => s.refresh);
   const recalculate = useRecalculateTarget(profile);
   const sync = useSync();
+  const router = useRouter();
+  const reloadSession = useSession((s) => s.load);
 
   return (
     <ScrollView
@@ -90,7 +94,76 @@ export default function ProfileScreen() {
           <Row label="Goal" value={profile.goalType ?? '—'} />
         </Card>
       ) : null}
+
+      <DeleteAccountCard
+        onDeleted={async () => {
+          // Back to a first-launch app: the profile is gone, so the root
+          // layout routes to onboarding once the session reloads.
+          await reloadSession();
+          router.replace('/onboarding');
+        }}
+      />
     </ScrollView>
+  );
+}
+
+/**
+ * Deleting the account and all its data.
+ *
+ * Confirmed twice and never a single tap: this is the one action in the app
+ * that cannot be undone. The copy says plainly what goes and what it means,
+ * without trying to talk anyone out of it.
+ */
+function DeleteAccountCard({ onDeleted }: { onDeleted: () => Promise<void> }) {
+  const sync = useSync();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function confirm() {
+    Alert.alert(
+      'Delete everything?',
+      'Your foods, meals, weight and targets will be removed from this device and from the cloud. This cannot be undone.',
+      [
+        { text: 'Keep my data', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            setError(null);
+            const result = await sync.deleteEverything();
+            if (result.ok) {
+              await onDeleted();
+            } else {
+              setError(result.message);
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  return (
+    <Card style={{ gap: spacing.md }}>
+      <Text variant="heading">Delete your data</Text>
+      <Text variant="body" color={palette.textSecondary}>
+        Removes everything you've logged, from this device and from the cloud,
+        and deletes the account. There's no way to get it back.
+      </Text>
+      {error ? (
+        <Text variant="body" color={palette.error}>
+          {error}
+        </Text>
+      ) : null}
+      <Button
+        title="Delete everything"
+        variant="secondary"
+        fullWidth
+        loading={busy}
+        onPress={confirm}
+      />
+    </Card>
   );
 }
 

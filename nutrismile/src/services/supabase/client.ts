@@ -88,3 +88,46 @@ export async function linkEmail(email: string): Promise<{ ok: boolean; message: 
     ? { ok: false, message: error.message }
     : { ok: true, message: 'Check your email to confirm the address.' };
 }
+
+/**
+ * The signed-in user's access token, for calling our Edge Functions.
+ *
+ * The anon key must not be used for this. It ships inside the app bundle and
+ * can be extracted from it, so a function receiving it learns nothing about
+ * who is calling — and the functions that cost money need to know.
+ */
+export async function getAccessToken(): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+/**
+ * Delete the account and everything the server holds for it.
+ *
+ * The server-side cascade does the work: removing the auth user removes the
+ * profile row, and every table cascades from there. Local data is wiped
+ * separately by the caller — one is no use without the other.
+ */
+export async function deleteAccount(): Promise<{ ok: boolean; message: string }> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: true, message: 'No cloud account to delete.' };
+
+  const token = await getAccessToken();
+  if (!token) return { ok: true, message: 'No cloud account to delete.' };
+
+  try {
+    const { error } = await supabase.functions.invoke('delete-account');
+    if (error) return { ok: false, message: error.message };
+
+    await supabase.auth.signOut();
+    return { ok: true, message: 'Account deleted.' };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : 'Could not reach the server.',
+    };
+  }
+}

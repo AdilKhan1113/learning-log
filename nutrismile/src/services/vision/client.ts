@@ -7,6 +7,7 @@
  * tested.
  */
 import { type Result, err, ok } from '../../domain/result.ts';
+import { getAccessToken } from '../supabase/client.ts';
 import { type EstimateSource, type MealEstimate, parseMealEstimate } from './schema.ts';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -17,6 +18,7 @@ const TIMEOUT_MS = 45_000;
 
 export type EstimateFailure =
   | { code: 'unavailable' }
+  | { code: 'signed_out' }
   | { code: 'offline' }
   | { code: 'timeout' }
   | { code: 'too_large' }
@@ -34,6 +36,8 @@ export function describeEstimateFailure(failure: EstimateFailure): string {
   switch (failure.code) {
     case 'unavailable':
       return 'Photo estimates need the app’s backend, which isn’t set up yet. You can still search or scan.';
+    case 'signed_out':
+      return 'Photo estimates need your device to finish setting up its account. Try again in a moment.';
     case 'offline':
       return 'Photo estimates need a connection. You can search or scan offline instead.';
     case 'timeout':
@@ -41,7 +45,7 @@ export function describeEstimateFailure(failure: EstimateFailure): string {
     case 'too_large':
       return 'That photo is too large to send. Try taking it again.';
     case 'rate_limited':
-      return 'Too many estimates at once. Give it a moment and try again.';
+      return "That's as many photo estimates as one day allows. Searching and scanning still work.";
     case 'no_food_found':
       return 'No food was identified in that photo. A closer shot with the whole plate in frame usually helps.';
     case 'refused':
@@ -67,6 +71,8 @@ export interface EstimateOptions {
   fetchImpl?: typeof fetch;
   baseUrl?: string;
   anonKey?: string;
+  /** The caller's access token. Read from the session when not given. */
+  accessToken?: string;
 }
 
 /**
@@ -86,6 +92,10 @@ function mapServerError(status: number, code: unknown): EstimateFailure {
     case 'provider_key_missing':
     case 'unknown_provider':
       return { code: 'unavailable' };
+    case 'not_signed_in':
+      return { code: 'signed_out' };
+    case 'daily_limit_reached':
+      return { code: 'rate_limited' };
     case 'image_too_large':
       return { code: 'too_large' };
     case 'rate_limited':
@@ -116,6 +126,11 @@ export async function estimateMeal(
 
   if (!baseUrl || !anonKey) return err({ code: 'unavailable' });
 
+  // Without a session the function cannot tell who is calling, and it will
+  // refuse. Saying so here is clearer than a 401 from a round trip.
+  const accessToken = options.accessToken ?? (await getAccessToken());
+  if (!accessToken) return err({ code: 'signed_out' });
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const onOuterAbort = () => controller.abort();
@@ -128,7 +143,9 @@ export async function estimateMeal(
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        Authorization: `Bearer ${anonKey}`,
+        // The user's own token, not the anon key: the function needs to
+        // know who is calling, and the anon key ships in the bundle.
+        Authorization: `Bearer ${accessToken}`,
         apikey: anonKey,
       },
       body: JSON.stringify({

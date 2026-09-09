@@ -21,6 +21,7 @@
  *   supabase secrets set GEMINI_MODEL=...        # optional; overrides the default
  *   supabase functions deploy estimate-meal
  */
+import { requireUser, withinDailyLimit } from '../_shared/auth.ts';
 import { type ProviderError, statusFor } from './prompt.ts';
 import { DEFAULT_MODEL as ANTHROPIC_MODEL, estimateWithAnthropic } from './anthropic.ts';
 import { DEFAULT_MODEL as GEMINI_MODEL, estimateWithGemini } from './gemini.ts';
@@ -28,6 +29,13 @@ import { DEFAULT_MODEL as GEMINI_MODEL, estimateWithGemini } from './gemini.ts';
 type Provider = 'anthropic' | 'gemini';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Estimates per user per day. This endpoint costs money on every call, so it
+ * is capped rather than left open to whoever extracts the app's anon key.
+ * Generous for a person logging meals; useless to someone scripting it.
+ */
+const DAILY_LIMIT = Number(Deno.env.get('VISION_DAILY_LIMIT') ?? '30');
 const ACCEPTED_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const CORS_HEADERS = {
@@ -99,6 +107,10 @@ Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
+  // Establish who is calling before anything that costs money happens.
+  const auth = await requireUser(request);
+  if (!auth.ok) return json({ error: auth.failure.error }, auth.failure.status);
+
   const selected = selectProvider();
   if ('error' in selected) return json({ error: selected.error }, 503);
 
@@ -117,6 +129,14 @@ Deno.serve(async (request: Request) => {
     return json({ error: 'unsupported_media_type' }, 400);
   }
   if (base64Bytes(image) > MAX_IMAGE_BYTES) return json({ error: 'image_too_large' }, 413);
+
+  // Counted before the call rather than after, so a failed estimate still
+  // spends an allowance — otherwise forcing failures would be an unlimited
+  // retry loop.
+  const usage = await withinDailyLimit(auth.caller.userId, DAILY_LIMIT);
+  if (usage && !usage.allowed) {
+    return json({ error: 'daily_limit_reached', limit: DAILY_LIMIT }, 429);
+  }
 
   const result =
     selected.provider === 'gemini'

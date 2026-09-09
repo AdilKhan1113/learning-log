@@ -21,11 +21,12 @@ import type { FallbackError } from '../../services/usda/client.ts';
  * Either service's error, rendered for the screen.
  *
  * The two unions overlap on offline, timeout, http and malformed, and the
- * Open Food Facts wording reads correctly for either source. Only
- * `unavailable` is specific to the fallback.
+ * Open Food Facts wording reads correctly for either source. `unavailable` and
+ * `signed_out` are specific to the fallback, which goes through our own Edge
+ * Function and so can fail in ways a public API cannot.
  */
 function describeError(error: LookupError | FallbackError): string {
-  return error.code === 'unavailable'
+  return error.code === 'unavailable' || error.code === 'signed_out'
     ? describeFallbackError(error)
     : describeLookupError(error);
 }

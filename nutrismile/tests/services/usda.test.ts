@@ -161,6 +161,7 @@ describe('matching the scanned barcode', () => {
 describe('the fallback client', () => {
   const baseUrl = 'https://example.supabase.co';
   const anonKey = 'anon-key';
+  const accessToken = 'a-user-session-token';
 
   function jsonFetch(body: unknown, status = 200): typeof fetch {
     return (async () => ({
@@ -181,6 +182,7 @@ describe('the fallback client', () => {
     const result = await lookupBarcode(['016000275287'], {
       baseUrl: '',
       anonKey: '',
+      accessToken,
       fetchImpl: jsonFetch({}),
     });
     assert.ok(!result.ok && result.error.code === 'unavailable');
@@ -190,6 +192,7 @@ describe('the fallback client', () => {
     const result = await lookupBarcode(['016000275287'], {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({ foods: [cereal] }),
     });
     assert.ok(result.ok && result.value?.name === 'HONEY NUT CEREAL');
@@ -199,6 +202,7 @@ describe('the fallback client', () => {
     const result = await lookupBarcode(['016000275287'], {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({ foods: [{ ...cereal, gtinUpc: '000000000000' }] }),
     });
     assert.ok(result.ok && result.value === null);
@@ -208,6 +212,7 @@ describe('the fallback client', () => {
     const result = await lookupBarcode(['016000275287'], {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({}, 404),
     });
     assert.ok(result.ok && result.value === null);
@@ -217,6 +222,7 @@ describe('the fallback client', () => {
     const result = await lookupBarcode(['016000275287'], {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({}, 502),
     });
     assert.ok(!result.ok && result.error.code === 'http');
@@ -226,14 +232,26 @@ describe('the fallback client', () => {
     const result = await lookupBarcode(['016000275287'], {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({ error: 'nope' }),
     });
     assert.ok(!result.ok && result.error.code === 'malformed');
   });
 
+  test('refuses before the network when there is no session', async () => {
+    const result = await lookupBarcode(['016000275287'], {
+      baseUrl,
+      anonKey,
+      accessToken: '',
+      fetchImpl: jsonFetch({ foods: [cereal] }),
+    });
+    assert.ok(!result.ok && result.error.code === 'signed_out');
+  });
+
   test('every failure has a message', () => {
     const errors = [
       { code: 'unavailable' as const },
+      { code: 'signed_out' as const },
       { code: 'offline' as const },
       { code: 'timeout' as const },
       { code: 'http' as const, status: 500 },

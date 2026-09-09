@@ -15,6 +15,8 @@
  *   supabase functions deploy food-lookup
  */
 
+import { requireUser } from '../_shared/auth.ts';
+
 const USDA_SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search';
 
 /** Fields the app actually reads. Anything else is dropped before it is sent. */
@@ -67,6 +69,11 @@ function trim(food: Record<string, unknown>): TrimmedFood {
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
   if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405);
+
+  // The anon key ships in the app bundle, so it proves nothing about who is
+  // calling. This endpoint spends a rate-limited USDA key, so it wants a user.
+  const auth = await requireUser(request);
+  if (!auth.ok) return json({ error: auth.failure.error }, auth.failure.status);
 
   const apiKey = Deno.env.get('USDA_API_KEY');
   if (!apiKey) {

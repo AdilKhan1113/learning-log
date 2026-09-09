@@ -8,6 +8,7 @@ import {
 
 const baseUrl = 'https://example.supabase.co';
 const anonKey = 'anon-key';
+const accessToken = 'a-user-session-token';
 
 const goodEstimate = {
   foods: [
@@ -33,7 +34,7 @@ describe('the estimate endpoint', () => {
   });
 
   test('reports unavailable when the backend is not configured', async () => {
-    const result = await estimateMeal('abc', { baseUrl: '', anonKey: '', fetchImpl: jsonFetch({}) });
+    const result = await estimateMeal('abc', { baseUrl: '', anonKey: '', accessToken, fetchImpl: jsonFetch({}) });
     assert.ok(!result.ok && result.error.code === 'unavailable');
   });
 
@@ -41,10 +42,65 @@ describe('the estimate endpoint', () => {
     const result = await estimateMeal('abc', {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({ estimate: goodEstimate }),
     });
     assert.ok(result.ok);
     if (result.ok) assert.equal(result.value.foods[0]?.name, 'Grilled chicken');
+  });
+
+  test("sends the user's own token, not the shared anon key", async () => {
+    let headers: Record<string, string> = {};
+    const spy = (async (_url: string, init: RequestInit) => {
+      headers = init.headers as Record<string, string>;
+      return { ok: true, status: 200, json: async () => ({ estimate: goodEstimate }) };
+    }) as unknown as typeof fetch;
+
+    await estimateMeal('abc', { baseUrl, anonKey, accessToken, fetchImpl: spy });
+    assert.equal(
+      headers.Authorization,
+      `Bearer ${accessToken}`,
+      'the anon key ships in the bundle, so it proves nothing about the caller',
+    );
+    assert.notEqual(headers.Authorization, `Bearer ${anonKey}`);
+  });
+
+  test('refuses before the network when there is no session', async () => {
+    let called = false;
+    const spy = (async () => {
+      called = true;
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    const result = await estimateMeal('abc', {
+      baseUrl,
+      anonKey,
+      accessToken: '',
+      fetchImpl: spy,
+    });
+    assert.ok(!result.ok && result.error.code === 'signed_out');
+    assert.equal(called, false, 'a request with no user would only be rejected anyway');
+  });
+
+  test('the daily cap reads as a limit, not an error', async () => {
+    const result = await estimateMeal('abc', {
+      baseUrl,
+      anonKey,
+      accessToken,
+      fetchImpl: jsonFetch({ error: 'daily_limit_reached', limit: 30 }, 429),
+    });
+    assert.ok(!result.ok && result.error.code === 'rate_limited');
+    assert.ok(describeEstimateFailure({ code: 'rate_limited' }).includes('still work'));
+  });
+
+  test('a rejected token reads as not signed in', async () => {
+    const result = await estimateMeal('abc', {
+      baseUrl,
+      anonKey,
+      accessToken,
+      fetchImpl: jsonFetch({ error: 'not_signed_in' }, 401),
+    });
+    assert.ok(!result.ok && result.error.code === 'signed_out');
   });
 
   test('sends the image in the body, not the URL', async () => {
@@ -54,7 +110,7 @@ describe('the estimate endpoint', () => {
       return { ok: true, status: 200, json: async () => ({ estimate: goodEstimate }) };
     }) as unknown as typeof fetch;
 
-    await estimateMeal('BASE64DATA', { baseUrl, anonKey, fetchImpl: spy });
+    await estimateMeal('BASE64DATA', { baseUrl, anonKey, accessToken, fetchImpl: spy });
     assert.equal(captured?.method, 'POST');
     assert.ok(String(captured?.body).includes('BASE64DATA'));
   });
@@ -63,6 +119,7 @@ describe('the estimate endpoint', () => {
     const result = await estimateMeal('abc', {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({
         estimate: goodEstimate,
         provider: 'gemini',
@@ -80,6 +137,7 @@ describe('the estimate endpoint', () => {
     const result = await estimateMeal('abc', {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({ estimate: goodEstimate }),
     });
     assert.ok(result.ok && result.value.source === null);
@@ -90,6 +148,7 @@ describe('the estimate endpoint', () => {
       const result = await estimateMeal('abc', {
         baseUrl,
         anonKey,
+        accessToken,
         fetchImpl: jsonFetch({ error: code }, 503),
       });
       assert.ok(!result.ok && result.error.code === 'unavailable', code);
@@ -100,6 +159,7 @@ describe('the estimate endpoint', () => {
     const result = await estimateMeal('abc', {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({ estimate: { foods: [] } }),
     });
     assert.ok(!result.ok && result.error.code === 'no_food_found');
@@ -109,6 +169,7 @@ describe('the estimate endpoint', () => {
     const result = await estimateMeal('abc', {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({ estimate: 'a plate of chicken' }),
     });
     assert.ok(!result.ok && result.error.code === 'unreadable');
@@ -127,6 +188,7 @@ describe('the estimate endpoint', () => {
       const result = await estimateMeal('abc', {
         baseUrl,
         anonKey,
+        accessToken,
         fetchImpl: jsonFetch({ error: code }, status),
       });
       assert.ok(!result.ok && result.error.code === expected, `${code} -> ${expected}`);
@@ -137,6 +199,7 @@ describe('the estimate endpoint', () => {
     const result = await estimateMeal('abc', {
       baseUrl,
       anonKey,
+      accessToken,
       fetchImpl: jsonFetch({ error: 'something_new' }, 500),
     });
     assert.ok(!result.ok && result.error.code === 'http');
@@ -147,7 +210,7 @@ describe('the estimate endpoint', () => {
       throw new TypeError('Network request failed');
     }) as unknown as typeof fetch;
 
-    const result = await estimateMeal('abc', { baseUrl, anonKey, fetchImpl: failing });
+    const result = await estimateMeal('abc', { baseUrl, anonKey, accessToken, fetchImpl: failing });
     assert.ok(!result.ok && result.error.code === 'offline');
   });
 
@@ -158,7 +221,7 @@ describe('the estimate endpoint', () => {
       throw error;
     }) as unknown as typeof fetch;
 
-    const result = await estimateMeal('abc', { baseUrl, anonKey, fetchImpl: timing_out });
+    const result = await estimateMeal('abc', { baseUrl, anonKey, accessToken, fetchImpl: timing_out });
     assert.ok(!result.ok && result.error.code === 'timeout');
   });
 });
@@ -166,6 +229,7 @@ describe('the estimate endpoint', () => {
 describe('failure messages', () => {
   const failures = [
     { code: 'unavailable' as const },
+    { code: 'signed_out' as const },
     { code: 'offline' as const },
     { code: 'timeout' as const },
     { code: 'too_large' as const },

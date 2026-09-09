@@ -41,3 +41,16 @@ export async function closeDatabase(): Promise<void> {
 }
 
 export type Database = SQLite.SQLiteDatabase;
+
+/**
+ * Delete every trace of the local database and start over.
+ *
+ * The file is removed rather than emptied table by table: a DELETE per table
+ * can miss one as the schema grows, and "we deleted your data" has to be true
+ * without qualification. The next getDatabase() recreates and migrates a fresh
+ * one, so the app returns to its first-launch state.
+ */
+export async function resetDatabase(): Promise<void> {
+  await closeDatabase();
+  await SQLite.deleteDatabaseAsync(DATABASE_NAME);
+}
