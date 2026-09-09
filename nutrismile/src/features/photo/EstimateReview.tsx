@@ -62,6 +62,11 @@ export function EstimateReview({
           These are estimates from the photo. Adjust anything that looks off —
           nothing is logged until you say so.
         </Text>
+        {estimate.source ? (
+          <Text variant="caption" color={palette.textTertiary}>
+            Estimated by {estimate.source.model}
+          </Text>
+        ) : null}
       </View>
 
       {estimate.note ? (

@@ -1,96 +1,39 @@
 /**
  * estimate-meal — identify foods in a photo and estimate their nutrition.
  *
- * The Anthropic API key lives here and only here. A key shipped in a mobile
- * bundle is a published key, so the device sends the image to this function
- * and never talks to the model directly.
+ * This function exists to hold the API key. A key shipped in a mobile bundle
+ * is a published key, so the device sends the image here and never talks to a
+ * model provider directly.
  *
- * The response is deliberately not interpreted here beyond being handed back
- * as JSON: validation lives in the app at src/services/vision/schema.ts, where
- * it is pure and unit-tested. This function's job is the key and the prompt.
+ * Two providers are supported so the same photos can be put to both and
+ * compared. The prompt and the requested shape are identical either way
+ * (prompt.ts), so a difference in the estimates is a difference in the models
+ * rather than in how they were asked.
+ *
+ * The response is not interpreted beyond being handed back as JSON:
+ * validation lives in the app at src/services/vision/schema.ts, where it is
+ * pure and unit-tested, and it is provider-agnostic.
  *
  * Deploy:
- *   supabase secrets set ANTHROPIC_API_KEY=...
+ *   supabase secrets set ANTHROPIC_API_KEY=...   # for the anthropic provider
+ *   supabase secrets set GEMINI_API_KEY=...      # for the gemini provider
+ *   supabase secrets set VISION_PROVIDER=gemini  # optional; see below
+ *   supabase secrets set GEMINI_MODEL=...        # optional; overrides the default
  *   supabase functions deploy estimate-meal
  */
-import Anthropic from 'npm:@anthropic-ai/sdk@^0.70.0';
+import { type ProviderError, statusFor } from './prompt.ts';
+import { DEFAULT_MODEL as ANTHROPIC_MODEL, estimateWithAnthropic } from './anthropic.ts';
+import { DEFAULT_MODEL as GEMINI_MODEL, estimateWithGemini } from './gemini.ts';
 
-/**
- * Claude Opus 5. Estimating portions from a photo is a perception and
- * judgement task, and the numbers go into someone's food log, so this uses the
- * capable model rather than the cheap one.
- *
- * Effort is low because this is one bounded extraction with a fixed schema and
- * a user waiting on it, not open-ended reasoning. Raise it if portion accuracy
- * proves disappointing in practice.
- */
-const MODEL = 'claude-opus-5';
-const EFFORT = 'low';
+type Provider = 'anthropic' | 'gemini';
 
-/** Room for the tool call plus adaptive thinking, which counts toward this. */
-const MAX_TOKENS = 8000;
-
-/** Images larger than this are rejected before reaching the model. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-
-const ACCEPTED_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+const ACCEPTED_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
-
-const SYSTEM_PROMPT = `You estimate the nutritional content of meals from photographs for a food logging app.
-
-Identify each distinct food in the photo and estimate its portion and nutrition. Use visible references for scale — cutlery, plate size, hands, packaging.
-
-Be honest about uncertainty rather than confident and wrong. The person sees and edits every number before it is logged, so a clearly-flagged rough estimate is far more useful than a precise-looking guess.
-
-- Report each food separately. Do not merge a composed plate into one line.
-- Set confidence per item: high when the food and portion are both clear, low when either is obscured, ambiguous, or hidden under sauce.
-- Calories must be consistent with the macros you give for the same item.
-- If the photo does not show food, or is too dark or blurred to read, return an empty list and say why in the note.
-- Never invent a food you cannot see to make a plate look complete.`;
-
-/** Strict schema: the model's arguments are guaranteed to validate against it. */
-const REPORT_TOOL = {
-  name: 'report_meal',
-  description: 'Report the foods identified in the photograph and their estimated nutrition.',
-  strict: true,
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      foods: {
-        type: 'array',
-        description: 'One entry per distinct food visible. Empty if none.',
-        items: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'What the food is, as a person would say it.' },
-            grams: { type: 'number', description: 'Estimated edible portion in grams.' },
-            kcal: { type: 'number' },
-            proteinG: { type: 'number' },
-            carbsG: { type: 'number' },
-            fatG: { type: 'number' },
-            confidence: {
-              type: 'number',
-              description: '0 to 1. How sure you are of this item and its portion.',
-            },
-          },
-          required: ['name', 'grams', 'kcal', 'proteinG', 'carbsG', 'fatG', 'confidence'],
-          additionalProperties: false,
-        },
-      },
-      confidence: { type: 'number', description: '0 to 1 for the estimate as a whole.' },
-      note: {
-        type: ['string', 'null'],
-        description: 'Anything that limited the estimate: poor light, hidden food, ambiguity.',
-      },
-    },
-    required: ['foods', 'confidence', 'note'],
-    additionalProperties: false,
-  },
 };
 
 function json(body: unknown, status = 200): Response {
@@ -106,12 +49,58 @@ function base64Bytes(data: string): number {
   return Math.floor((data.length * 3) / 4) - padding;
 }
 
+/**
+ * Which provider to use.
+ *
+ * `VISION_PROVIDER` decides when it is set — that is the switch for putting
+ * the same photo to each in turn. With it unset, whichever key is present
+ * wins; with both present and no preference stated, Anthropic is used, since
+ * silently picking one of two configured providers should at least be
+ * predictable.
+ */
+function selectProvider(): { provider: Provider; apiKey: string } | { error: string } {
+  const requested = Deno.env.get('VISION_PROVIDER')?.trim().toLowerCase();
+  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
+  const geminiKey = Deno.env.get('GEMINI_API_KEY');
+
+  if (requested && requested !== 'anthropic' && requested !== 'gemini') {
+    return { error: 'unknown_provider' };
+  }
+
+  if (requested === 'anthropic') {
+    return anthropicKey
+      ? { provider: 'anthropic', apiKey: anthropicKey }
+      : { error: 'provider_key_missing' };
+  }
+  if (requested === 'gemini') {
+    return geminiKey ? { provider: 'gemini', apiKey: geminiKey } : { error: 'provider_key_missing' };
+  }
+
+  if (anthropicKey) return { provider: 'anthropic', apiKey: anthropicKey };
+  if (geminiKey) return { provider: 'gemini', apiKey: geminiKey };
+  return { error: 'estimator_unconfigured' };
+}
+
+/** A message the developer can act on, for the failures that are config. */
+function describeProviderError(error: ProviderError, provider: Provider, model: string): string {
+  switch (error) {
+    case 'model_not_found':
+      return `${provider} has no model "${model}". Set ${provider === 'gemini' ? 'GEMINI_MODEL' : 'ANTHROPIC_MODEL'} to a current one.`;
+    case 'unauthorized':
+      return `The ${provider} API key was rejected.`;
+    case 'bad_request':
+      return `${provider} rejected the request shape.`;
+    default:
+      return '';
+  }
+}
+
 Deno.serve(async (request: Request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
   if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!apiKey) return json({ error: 'estimator_unconfigured' }, 503);
+  const selected = selectProvider();
+  if ('error' in selected) return json({ error: selected.error }, 503);
 
   let body: { image?: unknown; mediaType?: unknown };
   try {
@@ -124,60 +113,37 @@ Deno.serve(async (request: Request) => {
   const mediaType = typeof body.mediaType === 'string' ? body.mediaType : 'image/jpeg';
 
   if (!image) return json({ error: 'no_image' }, 400);
-  if (!ACCEPTED_MEDIA_TYPES.includes(mediaType as (typeof ACCEPTED_MEDIA_TYPES)[number])) {
+  if (!ACCEPTED_MEDIA_TYPES.includes(mediaType)) {
     return json({ error: 'unsupported_media_type' }, 400);
   }
-  if (base64Bytes(image) > MAX_IMAGE_BYTES) {
-    return json({ error: 'image_too_large' }, 413);
+  if (base64Bytes(image) > MAX_IMAGE_BYTES) return json({ error: 'image_too_large' }, 413);
+
+  const result =
+    selected.provider === 'gemini'
+      ? await estimateWithGemini(
+          selected.apiKey,
+          image,
+          mediaType,
+          Deno.env.get('GEMINI_MODEL') || GEMINI_MODEL,
+        )
+      : await estimateWithAnthropic(
+          selected.apiKey,
+          image,
+          mediaType,
+          Deno.env.get('ANTHROPIC_MODEL') || ANTHROPIC_MODEL,
+        );
+
+  if (!result.ok) {
+    const detail = describeProviderError(result.error, selected.provider, result.model);
+    return json(
+      detail
+        ? { error: result.error, provider: selected.provider, detail }
+        : { error: result.error, provider: selected.provider },
+      statusFor(result.error),
+    );
   }
 
-  const client = new Anthropic({ apiKey });
-
-  let response;
-  try {
-    response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      output_config: { effort: EFFORT },
-      tools: [REPORT_TOOL],
-      // `auto` rather than a forced call: forcing is rejected on some current
-      // models, and a strict schema already guarantees valid arguments.
-      tool_choice: { type: 'auto' },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: image } },
-            {
-              type: 'text',
-              text: 'Identify the foods in this photograph and report them with the report_meal tool.',
-            },
-          ],
-        },
-      ],
-    });
-  } catch (error) {
-    // Never forward the provider's error body: it can echo request details.
-    const status = (error as { status?: number }).status;
-    if (status === 429) return json({ error: 'rate_limited' }, 429);
-    return json({ error: 'estimator_unreachable' }, 502);
-  }
-
-  if (response.stop_reason === 'refusal') {
-    return json({ error: 'refused' }, 422);
-  }
-
-  const toolUse = response.content.find(
-    (block): block is Anthropic.ToolUseBlock =>
-      block.type === 'tool_use' && block.name === 'report_meal',
-  );
-
-  if (!toolUse) {
-    // The model answered in prose instead of calling the tool. Nothing
-    // structured to return, and guessing at its text would defeat the schema.
-    return json({ error: 'no_estimate' }, 422);
-  }
-
-  return json({ estimate: toolUse.input });
+  // The provider and model come back so the app can show which one produced
+  // an estimate — which is the whole point of being able to switch.
+  return json({ estimate: result.estimate, provider: selected.provider, model: result.model });
 });

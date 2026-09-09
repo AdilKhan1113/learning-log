@@ -171,6 +171,16 @@ describe('parsing a whole response', () => {
     }
   });
 
+  test('the source is left for the client to fill in, not read from the model', () => {
+    const result = parseMealEstimate({
+      foods: [chicken],
+      // A model claiming to be something else must not be believed.
+      provider: 'not-a-provider',
+      model: 'made-up',
+    });
+    assert.ok(result.ok && result.value.source === null);
+  });
+
   test("the model's note about a difficult photo is kept", () => {
     const result = parseMealEstimate({
       foods: [chicken],

@@ -51,7 +51,7 @@ and native type stripping, against `node:sqlite`.
 
 ## Verified
 
-- 358 tests passing.
+- 362 tests passing.
 - `tsc --noEmit` clean across all source files.
 - `expo export` bundles: 1781 modules to a Hermes bytecode bundle.
 
@@ -65,7 +65,8 @@ client is tested against fixtures with an injected `fetch`, not live responses.
 `docs/schema.md` explains the data model and why it is shaped this way.
 `docs/food-database.md` covers search, caching and the OFF mapping rules.
 `docs/barcode-scanning.md` covers the scan pipeline and where the API keys live.
-`docs/photo-estimation.md` covers the vision estimator, its validation and its cost.
+`docs/photo-estimation.md` covers the vision estimator, its two providers, its
+validation and its cost.
 The schema itself is `src/db/schema/001_init.sql`.
 
 ## Conventions

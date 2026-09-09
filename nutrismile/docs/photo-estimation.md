@@ -48,33 +48,72 @@ Overall confidence, when the model does not give one, is the **minimum** across
 items rather than the mean — a plate is only as well understood as its least
 certain part.
 
+## Two providers, one prompt
+
+Either Anthropic or Gemini can produce the estimate. The point is to be able to
+put the same photographs to both and keep whichever reads plates better — so
+the system prompt, the user prompt and the requested field set live in
+`prompt.ts` and are shared. A difference in the estimates is then a difference
+between the models, not between two prompts that drifted apart.
+
+| File | Role |
+|---|---|
+| `prompt.ts` | The instructions and the shape, shared |
+| `anthropic.ts` | Strict tool schema, `tool_choice: auto` |
+| `gemini.ts` | `responseSchema` structured output |
+| `index.ts` | HTTP, provider selection, validation of the request |
+
+The app is untouched by the choice: it validates a provider-agnostic shape, and
+the review screen prints whichever model answered so a comparison can actually
+be attributed.
+
 ## Where the key is
 
-`ANTHROPIC_API_KEY` lives in the Edge Function and nowhere else. The device
-sends the image; the function holds the key. It never forwards the provider's
-error body, which can echo request details.
+The API key lives in the Edge Function and nowhere else. The device sends the
+image; the function holds the key. Neither provider's error body is ever
+forwarded, since both can echo request details.
 
 ```bash
+# One or both:
 supabase secrets set ANTHROPIC_API_KEY=...
+supabase secrets set GEMINI_API_KEY=...
+
+# Which to use. Unset means: whichever key is present, Anthropic if both.
+supabase secrets set VISION_PROVIDER=gemini
+
+# Optional model overrides.
+supabase secrets set GEMINI_MODEL=gemini-2.5-flash
+supabase secrets set ANTHROPIC_MODEL=claude-opus-5
+
 supabase functions deploy estimate-meal
 ```
 
-Until that is deployed the feature reports `unavailable`, which is treated as
-"not set up yet" rather than as an error.
+Flipping provider is `supabase secrets set VISION_PROVIDER=...` — no redeploy,
+no app update, no reinstall on the phone.
+
+Until a key is set the feature reports `unavailable`, which is treated as "not
+set up yet" rather than as an error.
+
+**Model ids are configuration, not constants.** Google's model names turn over
+quickly and Anthropic's do too. A retired id comes back as `model_not_found`
+with a message naming the variable to set, rather than as a mysterious 404.
 
 ## Model and cost
 
-`claude-opus-5` at `effort: "low"`. Estimating a portion from a photograph is a
-perception and judgement task and the numbers go into someone's food log, so
-this uses the capable model; effort is low because it is one bounded extraction
-against a fixed schema with a user waiting on it.
+**This is the app's only per-use cost.** Everything else in NutriSmile is free
+to run.
 
-**This is the app's only per-use cost.** Opus 5 is $5/1M input, $25/1M output;
-a photo is roughly 1–2k input tokens, so an estimate is somewhere around
-2–4 cents. Everything else in NutriSmile is free to run. If that proves too
-expensive at volume, the lever is `MODEL` and `EFFORT` at the top of the
-function — `claude-sonnet-5` is a fifth of the price — but that is a quality
-tradeoff to make deliberately, and worth measuring against real photos first.
+`claude-opus-5` at `effort: "low"` — the capable model, because estimating a
+portion from a photograph is a perception and judgement task and the numbers go
+into someone's food log; low effort because it is one bounded extraction
+against a fixed schema with a user waiting on it. At $5/1M input and $25/1M
+output, with a photo around 1–2k input tokens, an estimate lands somewhere near
+2–4 cents.
+
+`gemini-2.5-flash` is far cheaper and has a free tier, which is why the switch
+exists. Whether it estimates portions as well is an open question that only
+running both on real plates will answer — hence the model name on the review
+screen.
 
 Images are downscaled and sent at quality 0.6, capped at 5 MB server-side: a
 45-second round trip is worse than a slightly softer image, and the model does
@@ -87,15 +126,18 @@ separate lines for a composed plate, and an empty list with a note when the
 photo shows no food. It explicitly forbids inventing a food to make a plate look
 complete — the failure mode that would quietly inflate someone's log.
 
-`tool_choice` is `auto` rather than forced: forcing a tool call is rejected on
-some current models, and `strict: true` already guarantees the arguments
-validate.
+On Anthropic, `tool_choice` is `auto` rather than forced: forcing a tool call is
+rejected on some current models, and `strict: true` already guarantees the
+arguments validate. On Gemini, `responseSchema` asks for the JSON directly,
+which is the simpler of the two paths for a single fixed-shape extraction.
 
 ## Failure states
 
 Distinguished, because they need different responses: not configured, offline,
 timeout, image too large, rate limited, no food found, refused, unreadable
-response, and other HTTP errors. Two of them — unreadable and HTTP — say
+response, and other HTTP errors. Provider-side configuration failures — a
+rejected key, a retired model id, a rejected request shape — come back with a
+`detail` naming what to fix, and read to the user as "not set up yet". Two of them — unreadable and HTTP — say
 explicitly that nothing was logged.
 
 No message blames the user for their photo. A photo the model cannot read is a
@@ -104,11 +146,20 @@ limit of the estimator.
 Camera and library permission refusals are handled in the hook, each offering
 search as the alternative.
 
-## Not verified on hardware
+## Not verified against either API
 
 The validator and the client are unit-tested with an injected `fetch`, and the
 app compiles and bundles. But no photo has been through this: the Edge Function
-has never been deployed, and the model has never seen a plate. On the first real
-run, check whether portion estimates are plausible for familiar foods, and
-whether `effort: "low"` is enough — those are the two things most likely to need
-tuning.
+has never been deployed, and neither model has seen a plate.
+
+The Gemini path additionally could not be checked against Google's live
+documentation — this environment's network policy blocks it — so it is written
+from the documented `generateContent` shape rather than verified against it. If
+the first call fails, the request body in `gemini.ts` is the thing to check
+against current docs, and `GEMINI_MODEL` the first thing to try changing.
+
+On the first real run, worth checking:
+
+1. Whether portion estimates are plausible for foods you recognise.
+2. Whether the two providers disagree materially on the same photo.
+3. Whether `effort: "low"` (Anthropic) is enough.

@@ -28,6 +28,12 @@ export interface EstimatedFood {
   confidence: number;
 }
 
+/** Which provider and model produced an estimate. */
+export interface EstimateSource {
+  provider: string;
+  model: string;
+}
+
 export interface MealEstimate {
   foods: EstimatedFood[];
   /** 0–1 across the whole photo. */
@@ -36,6 +42,11 @@ export interface MealEstimate {
   note: string | null;
   /** Items the model returned that could not be trusted, by reason. */
   dropped: { reason: DropReason; count: number }[];
+  /**
+   * Set by the client from the response envelope, not parsed from the
+   * estimate itself — the model does not get to say what it is.
+   */
+  source: EstimateSource | null;
 }
 
 export type DropReason =
@@ -185,6 +196,7 @@ export function parseMealEstimate(raw: unknown): Result<MealEstimate, EstimateEr
         : Math.min(...foods.map((f) => f.confidence)),
     note: text(body.note),
     dropped,
+    source: null,
   });
 }
 

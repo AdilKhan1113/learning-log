@@ -59,6 +59,43 @@ describe('the estimate endpoint', () => {
     assert.ok(String(captured?.body).includes('BASE64DATA'));
   });
 
+  test('carries the provider and model back, so the estimate says who made it', async () => {
+    const result = await estimateMeal('abc', {
+      baseUrl,
+      anonKey,
+      fetchImpl: jsonFetch({
+        estimate: goodEstimate,
+        provider: 'gemini',
+        model: 'gemini-2.5-flash',
+      }),
+    });
+    assert.ok(result.ok);
+    if (result.ok) {
+      assert.equal(result.value.source?.provider, 'gemini');
+      assert.equal(result.value.source?.model, 'gemini-2.5-flash');
+    }
+  });
+
+  test('an estimate with no provider envelope still works', async () => {
+    const result = await estimateMeal('abc', {
+      baseUrl,
+      anonKey,
+      fetchImpl: jsonFetch({ estimate: goodEstimate }),
+    });
+    assert.ok(result.ok && result.value.source === null);
+  });
+
+  test('either provider missing its key reads as not set up', async () => {
+    for (const code of ['estimator_unconfigured', 'provider_key_missing', 'unknown_provider']) {
+      const result = await estimateMeal('abc', {
+        baseUrl,
+        anonKey,
+        fetchImpl: jsonFetch({ error: code }, 503),
+      });
+      assert.ok(!result.ok && result.error.code === 'unavailable', code);
+    }
+  });
+
   test('an unusable estimate is reported as no food found, never logged', async () => {
     const result = await estimateMeal('abc', {
       baseUrl,

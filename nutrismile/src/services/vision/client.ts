@@ -7,7 +7,7 @@
  * tested.
  */
 import { type Result, err, ok } from '../../domain/result.ts';
-import { type MealEstimate, parseMealEstimate } from './schema.ts';
+import { type EstimateSource, type MealEstimate, parseMealEstimate } from './schema.ts';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -69,10 +69,22 @@ export interface EstimateOptions {
   anonKey?: string;
 }
 
+/**
+ * Which provider and model answered, from the response envelope. Reported so
+ * the review screen can show it while two providers are being compared.
+ */
+function readSource(body: { provider?: unknown; model?: unknown }): EstimateSource | null {
+  const provider = typeof body.provider === 'string' ? body.provider : null;
+  const model = typeof body.model === 'string' ? body.model : null;
+  return provider ? { provider, model: model ?? provider } : null;
+}
+
 /** Map the function's error codes onto ours. */
 function mapServerError(status: number, code: unknown): EstimateFailure {
   switch (code) {
     case 'estimator_unconfigured':
+    case 'provider_key_missing':
+    case 'unknown_provider':
       return { code: 'unavailable' };
     case 'image_too_large':
       return { code: 'too_large' };
@@ -125,9 +137,14 @@ export async function estimateMeal(
       }),
     });
 
-    let body: { estimate?: unknown; error?: unknown };
+    let body: {
+      estimate?: unknown;
+      error?: unknown;
+      provider?: unknown;
+      model?: unknown;
+    };
     try {
-      body = (await response.json()) as { estimate?: unknown; error?: unknown };
+      body = (await response.json()) as typeof body;
     } catch {
       return err({ code: 'unreadable' });
     }
@@ -135,7 +152,7 @@ export async function estimateMeal(
     if (!response.ok) return err(mapServerError(response.status, body?.error));
 
     const parsed = parseMealEstimate(body?.estimate);
-    if (parsed.ok) return parsed;
+    if (parsed.ok) return ok({ ...parsed.value, source: readSource(body) });
 
     // A response the model produced but that held nothing usable reads to the
     // user as "no food found"; a shape this app cannot read is a bug.
