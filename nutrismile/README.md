@@ -39,6 +39,16 @@ Then scan the QR code with Expo Go (Android) or the Camera app (iOS). Phone and
 computer need to be on the same network; `npm start -- --tunnel` routes around
 it when they are not.
 
+## Backend features (optional)
+
+Barcode scanning and search work with no backend at all. Photo estimation and
+the USDA barcode fallback go through Supabase Edge Functions, which hold the
+API keys — copy `.env.example` to `.env` and fill in your project's URL and
+anon key, then see `docs/photo-estimation.md` for the function secrets.
+
+Without a `.env`, those two features report "not set up yet" and everything
+else works normally.
+
 ## Checks
 
 ```bash
