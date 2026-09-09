@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../src/ui/components/Text.tsx';
 import { Card } from '../../src/ui/components/Card.tsx';
 import { Button } from '../../src/ui/components/Button.tsx';
-import { palette, spacing } from '../../src/ui/theme/index.ts';
+import { TAB_BAR_HEIGHT, palette, spacing } from '../../src/ui/theme/index.ts';
 import { useSession } from '../../src/state/session.ts';
 import { listMissing, macroPercentages } from '../../src/domain/nutrition/goals.ts';
 import {
@@ -30,7 +30,7 @@ export default function ProfileScreen() {
       contentContainerStyle={{
         paddingTop: insets.top + spacing.lg,
         paddingHorizontal: spacing.lg,
-        paddingBottom: spacing.xxxl,
+        paddingBottom: TAB_BAR_HEIGHT + insets.bottom + spacing.lg,
         gap: spacing.xl,
       }}
     >

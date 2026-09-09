@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../src/ui/components/Text.tsx';
 import { EmptyState } from '../../src/ui/components/EmptyState.tsx';
 import { Button } from '../../src/ui/components/Button.tsx';
-import { HIT_SIZE, palette, radius, spacing } from '../../src/ui/theme/index.ts';
+import { HIT_SIZE, TAB_BAR_HEIGHT, palette, radius, spacing } from '../../src/ui/theme/index.ts';
 import type { Meal } from '../../src/domain/types.ts';
 import { useSession } from '../../src/state/session.ts';
 import { useFoodSearch } from '../../src/features/logging/useFoodSearch.ts';
@@ -67,7 +67,7 @@ export default function LogScreen() {
         contentContainerStyle={{
           paddingHorizontal: spacing.lg,
           paddingTop: spacing.lg,
-          paddingBottom: spacing.xxxl,
+          paddingBottom: TAB_BAR_HEIGHT + insets.bottom + spacing.lg,
         }}
         ListHeaderComponent={
           <View style={{ gap: spacing.sm, marginBottom: spacing.sm }}>

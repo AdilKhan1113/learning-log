@@ -36,12 +36,22 @@ export const typography = {
 /** Minimum tap target. Below this, things get missed on the move. */
 export const HIT_SIZE = 48;
 
+/**
+ * Height of the bottom tab bar, excluding the safe-area inset beneath it.
+ *
+ * Scrollable screens have to add this to their bottom padding or their last
+ * element sits behind the bar — which on the photo review screen means the
+ * button that logs the meal.
+ */
+export const TAB_BAR_HEIGHT = 88;
+
 export const theme = {
   colors: palette,
   spacing,
   radius,
   typography,
   hitSize: HIT_SIZE,
+  tabBarHeight: TAB_BAR_HEIGHT,
 } as const;
 
 export type Theme = typeof theme;

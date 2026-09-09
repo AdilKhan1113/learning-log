@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../src/ui/components/Text.tsx';
 import { Button } from '../../src/ui/components/Button.tsx';
 import { Card } from '../../src/ui/components/Card.tsx';
-import { HIT_SIZE, palette, spacing } from '../../src/ui/theme/index.ts';
+import { HIT_SIZE, TAB_BAR_HEIGHT, palette, spacing } from '../../src/ui/theme/index.ts';
 import { useBarcodeLookup } from '../../src/features/scanner/useBarcodeLookup.ts';
 import { ScannerOverlay } from '../../src/features/scanner/ScannerOverlay.tsx';
 import { useMealEstimate } from '../../src/features/photo/useMealEstimate.ts';
@@ -64,6 +64,7 @@ export default function ScanScreen() {
       <PhotoFlow
         photo={photo}
         insetTop={insets.top}
+        insetBottom={insets.bottom}
         userId={profile?.id ?? null}
         onDone={() => router.push('/')}
         onSearchInstead={() => {
@@ -173,12 +174,14 @@ export default function ScanScreen() {
 function PhotoFlow({
   photo,
   insetTop,
+  insetBottom,
   userId,
   onDone,
   onSearchInstead,
 }: {
   photo: ReturnType<typeof useMealEstimate>;
   insetTop: number;
+  insetBottom: number;
   userId: string | null;
   onDone: () => void;
   onSearchInstead: () => void;
@@ -237,7 +240,12 @@ function PhotoFlow({
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: palette.background }}
-      contentContainerStyle={{ paddingTop: insetTop, paddingBottom: spacing.xxxl }}
+      // The tab bar sits over this screen, and the button at the bottom of the
+      // review is the one that logs the meal — it must not end up behind it.
+      contentContainerStyle={{
+        paddingTop: insetTop,
+        paddingBottom: TAB_BAR_HEIGHT + insetBottom + spacing.lg,
+      }}
       keyboardShouldPersistTaps="handled"
     >
       <EstimateReview

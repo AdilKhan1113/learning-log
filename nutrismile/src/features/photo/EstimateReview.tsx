@@ -226,8 +226,19 @@ function FoodRow({
         <Text variant="body" color={palette.textSecondary}>
           g
         </Text>
-        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+        <View
+          style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'baseline',
+            justifyContent: 'flex-end',
+            gap: spacing.xs,
+          }}
+        >
           <Text variant="heading">{formatKcal(food.kcal)}</Text>
+          <Text variant="caption" color={palette.textSecondary}>
+            kcal
+          </Text>
         </View>
       </View>
 

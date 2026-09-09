@@ -7,7 +7,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../src/ui/components/Text.tsx';
 import { Button } from '../../src/ui/components/Button.tsx';
-import { palette, spacing } from '../../src/ui/theme/index.ts';
+import { TAB_BAR_HEIGHT, palette, spacing } from '../../src/ui/theme/index.ts';
 import { MEALS } from '../../src/domain/nutrition/totals.ts';
 import type { Meal } from '../../src/domain/types.ts';
 import { useSession } from '../../src/state/session.ts';
@@ -62,7 +62,7 @@ export default function TodayScreen() {
       contentContainerStyle={{
         paddingTop: insets.top + spacing.lg,
         paddingHorizontal: spacing.lg,
-        paddingBottom: spacing.xxxl,
+        paddingBottom: TAB_BAR_HEIGHT + insets.bottom + spacing.lg,
         gap: spacing.xl,
       }}
       refreshControl={

@@ -4,7 +4,7 @@
  */
 import { View } from 'react-native';
 import { Tabs } from 'expo-router';
-import { palette, spacing } from '../../src/ui/theme/index.ts';
+import { TAB_BAR_HEIGHT, palette, spacing } from '../../src/ui/theme/index.ts';
 import { Text } from '../../src/ui/components/Text.tsx';
 
 /** Text glyphs stand in for the icon set until one is chosen. */
@@ -50,7 +50,7 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: palette.surface,
           borderTopColor: palette.border,
-          height: 88,
+          height: TAB_BAR_HEIGHT,
           paddingTop: spacing.sm,
         },
       }}
