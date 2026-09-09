@@ -6,6 +6,8 @@
     "orientation": "portrait",
     "scheme": "nutrismile",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#12131A",
+    "icon": "./assets/icon.png",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
@@ -17,7 +19,14 @@
     "android": {
       "package": "com.nutrismile.app",
       "permissions": ["CAMERA"],
-      "edgeToEdgeEnabled": true
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#12131A"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -27,10 +36,19 @@
         {
           "cameraPermission": "NutriSmile uses the camera to scan barcodes and photograph meals."
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#12131A"
+        }
       ]
     ],
     "extra": {
-      "comment": "Public config only. API keys live in Supabase Edge Function secrets, never here."
+      "comment": "Public config only. API keys live in Supabase Edge Function secrets, never here. `eas init` adds extra.eas.projectId here on first build."
     }
   }
 }

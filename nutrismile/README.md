@@ -82,7 +82,12 @@ client is tested against fixtures with an injected `fetch`, not live responses.
 `docs/photo-estimation.md` covers the vision estimator, its two providers, its
 validation and its cost.
 `docs/sync.md` covers anonymous auth, the identity handover and conflict rules.
+`docs/play-store.md` covers releasing: the Data Safety answers and what in the
+code decides each one, the privacy policy and deletion URLs, store assets, and
+the EAS build.
 The schema itself is `src/db/schema/001_init.sql`.
+The privacy policy text is `supabase/functions/privacy-policy/index.ts`, which
+is the page that gets served — there is deliberately no second copy.
 
 ## Conventions
 

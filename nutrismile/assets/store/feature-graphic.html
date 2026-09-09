@@ -1,0 +1,52 @@
+<!doctype html>
+<!--
+  Play Store feature graphic, 1024x500. Source rather than an opaque PNG, so
+  the wording can be changed without a design tool:
+
+    chromium --headless --screenshot=feature-graphic.png \
+             --window-size=1024,500 --hide-scrollbars \
+             file://.../feature-graphic.html
+
+  Play crops this differently across surfaces, so nothing that matters sits
+  near an edge. No external font: a font that fails to load silently changes
+  the graphic, and system-ui renders the same on the machine taking the shot.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1024px; height: 500px; overflow: hidden; }
+  body {
+    background: #12131A;
+    color: #F2F3F7;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center; gap: 56px;
+    padding: 0 64px;
+  }
+  .mark { flex: 0 0 232px; height: 232px; }
+  h1 {
+    font-size: 74px; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+    margin-bottom: 22px;
+  }
+  /* Never wrap: a reflow at a different font metric would break the layout
+     silently, and the graphic is only ever rendered at this one size. */
+  p { font-size: 28px; line-height: 1.45; color: #A5A9B8; white-space: nowrap; }
+  .accent { color: #7BE0AD; }
+</style>
+</head>
+<body>
+  <!-- Same geometry as scripts/make-icons.mjs: 72% sweep from twelve
+       o'clock, round caps, stroke 16% of the diameter. -->
+  <svg class="mark" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+    <circle cx="50" cy="50" r="42" stroke="#2A2D3A" stroke-width="16"/>
+    <circle cx="50" cy="50" r="42" stroke="#7BE0AD" stroke-width="16"
+            stroke-linecap="round" stroke-dasharray="263.9"
+            stroke-dashoffset="73.9" transform="rotate(-90 50 50)"/>
+  </svg>
+  <div>
+    <h1>Nutri<span class="accent">Smile</span></h1>
+    <p>Log a meal in seconds.<br>Calories and macros, counted calmly.</p>
+  </div>
+</body>
+</html>
