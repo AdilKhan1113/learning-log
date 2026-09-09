@@ -5,7 +5,7 @@
  * the user edits and confirms; `confirm` is the only thing that writes, and
  * only the user can call it.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
   type EstimateFailure,
@@ -195,5 +195,11 @@ export function useMealEstimate(): MealEstimateState {
     setStage({ status: 'idle' });
   }, []);
 
-  return { stage, saving, captureAndEstimate, setPortion, removeFood, confirm, reset };
+  // Memoised so the returned object keeps its identity between renders. A
+  // caller putting it in a dependency array would otherwise re-run that effect
+  // on every render — which is a render loop when the effect sets state.
+  return useMemo(
+    () => ({ stage, saving, captureAndEstimate, setPortion, removeFood, confirm, reset }),
+    [stage, saving, captureAndEstimate, setPortion, removeFood, confirm, reset],
+  );
 }

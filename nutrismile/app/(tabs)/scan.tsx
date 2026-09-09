@@ -39,15 +39,22 @@ export default function ScanScreen() {
 
   // Stop the camera when the tab is left. A camera running behind another
   // screen drains the battery and shows a recording indicator for no reason.
+  //
+  // Depends on the individual reset functions rather than the objects holding
+  // them: a hook's return value is a new object on every render, so depending
+  // on it re-subscribes this effect every render, and its cleanup then sets
+  // state, which renders again. That loop is what "Maximum update depth
+  // exceeded" means.
+  const resetPhoto = photo.reset;
   useFocusEffect(
     useCallback(() => {
       setActive(true);
       return () => {
         setActive(false);
         reset();
-        photo.reset();
+        resetPhoto();
       };
-    }, [reset, photo]),
+    }, [reset, resetPhoto]),
   );
 
   // The photo flow takes over the whole screen once it starts: an estimate

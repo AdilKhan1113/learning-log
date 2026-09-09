@@ -5,7 +5,7 @@
  * injected dependencies, so it is unit-tested without a camera. This hook
  * supplies the real ones and holds the screen's state.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { type CanonicalBarcode, describeBarcodeError, parseBarcode } from '../../domain/barcode.ts';
 import { foods } from '../../db/repositories/index.ts';
 import {
@@ -87,5 +87,7 @@ export function useBarcodeLookup() {
     }
   }, []);
 
-  return { state, handleScan, reset };
+  // Memoised for the same reason as useMealEstimate: a fresh object each
+  // render makes this hook unsafe to put in a dependency array.
+  return useMemo(() => ({ state, handleScan, reset }), [state, handleScan, reset]);
 }
