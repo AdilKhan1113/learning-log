@@ -131,15 +131,48 @@ The server goes first. If the local wipe ran first and the server call then
 failed, the user would be left with nothing on the device and an account they
 could no longer reach to delete.
 
-**Still missing for Play:** a web-accessible deletion route. Google requires one
-that works without installing the app, and this is in-app only.
+## Deleting an account from the web
+
+Google also requires a deletion route that works without installing the app, so
+in-app deletion alone is not enough.
+
+The hard part is proof of ownership. An anonymous account has no email, no
+password and no username — a stranger arriving at a web page has nothing to
+identify themselves with, and nothing the server could send a confirmation link
+to. So the app issues a code, and the code *is* the identifier: whoever holds it
+is treated as the account's owner, the same bargain as a recovery key.
+
+`request-deletion-code` is authenticated, so only the signed-in owner can mint
+one. It generates 160 bits from `crypto.getRandomValues` and formats them in
+groups for transcription. Only the SHA-256 of the code is stored, so a database
+leak yields hashes rather than working deletion tokens, and the plaintext is
+returned exactly once — the app shows it with a warning to save it, and cannot
+show it again.
+
+One row per user, keyed on `user_id`, so minting a second code replaces the
+first: a code the user thinks they replaced is genuinely dead. The table has RLS
+enabled with no policies at all, so only the service role can read it.
+
+`delete-account-web` is the public page and must be deployed with
+`--no-verify-jwt` — a person who has uninstalled the app has no token to send.
+It serves self-contained HTML (no external CSS, JS or fonts, so the page cannot
+leak the visit to a third party), marked `noindex`. A POST hashes the submitted
+code, looks up the row, and calls `auth.admin.deleteUser`; the cascade does the
+rest. An unknown code and an already-used code produce identical wording, so the
+page cannot be used to test whether a code was ever valid.
 
 ## Deploying it
 
 ```bash
 supabase db push                              # tables, policies, usage counter
 supabase functions deploy delete-account      # alongside the other two
+supabase functions deploy request-deletion-code
+supabase functions deploy delete-account-web --no-verify-jwt
 ```
+
+The `--no-verify-jwt` on the last one is required, not optional: without it
+Supabase rejects the anonymous visitor before the function runs, and the page is
+unreachable for exactly the people it exists for.
 
 Anonymous sign-ins must also be enabled: **Dashboard → Authentication →
 Providers → Anonymous**. Without that, `signInAnonymously` fails and the app

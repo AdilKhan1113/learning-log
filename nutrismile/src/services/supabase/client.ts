@@ -131,3 +131,37 @@ export async function deleteAccount(): Promise<{ ok: boolean; message: string }>
     };
   }
 }
+
+/**
+ * Mint a code that deletes this account from a browser later.
+ *
+ * The account is anonymous, so nothing about it identifies the person holding
+ * it. This code is that identifier — issued while they are provably signed in,
+ * and shown once. Only its hash is kept, so it cannot be recovered afterwards;
+ * a new one has to be minted, which replaces the old.
+ */
+export async function requestDeletionCode(): Promise<
+  { ok: true; code: string } | { ok: false; message: string }
+> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, message: 'No cloud account to delete.' };
+
+  const token = await getAccessToken();
+  if (!token) return { ok: false, message: 'This device is still setting up its account.' };
+
+  try {
+    const { data, error } = await supabase.functions.invoke<{ code?: string }>(
+      'request-deletion-code',
+      { method: 'POST' },
+    );
+    if (error || typeof data?.code !== 'string') {
+      return { ok: false, message: error?.message ?? 'Could not issue a code.' };
+    }
+    return { ok: true, code: data.code };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : 'Could not reach the server.',
+    };
+  }
+}

@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../src/ui/components/Text.tsx';
 import { Card } from '../../src/ui/components/Card.tsx';
 import { Button } from '../../src/ui/components/Button.tsx';
-import { TAB_BAR_HEIGHT, palette, spacing } from '../../src/ui/theme/index.ts';
+import { TAB_BAR_HEIGHT, palette, radius, spacing } from '../../src/ui/theme/index.ts';
 import { useSession } from '../../src/state/session.ts';
 import { listMissing, macroPercentages } from '../../src/domain/nutrition/goals.ts';
 import {
@@ -18,6 +18,7 @@ import {
 } from '../../src/features/profile/useRecalculateTarget.ts';
 import type { DailyGoal } from '../../src/db/repositories/goals.ts';
 import { type SyncState, useSync } from '../../src/state/sync.ts';
+import { requestDeletionCode } from '../../src/services/supabase/client.ts';
 import { formatGrams, formatKcal } from '../../src/utils/format.ts';
 
 export default function ProfileScreen() {
@@ -118,6 +119,17 @@ function DeleteAccountCard({ onDeleted }: { onDeleted: () => Promise<void> }) {
   const sync = useSync();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
+  const [issuing, setIssuing] = useState(false);
+
+  async function getCode() {
+    setIssuing(true);
+    setError(null);
+    const result = await requestDeletionCode();
+    if (result.ok) setCode(result.code);
+    else setError(result.message);
+    setIssuing(false);
+  }
 
   function confirm() {
     Alert.alert(
@@ -163,6 +175,39 @@ function DeleteAccountCard({ onDeleted }: { onDeleted: () => Promise<void> }) {
         loading={busy}
         onPress={confirm}
       />
+
+      {/* The account is anonymous, so nothing about it identifies its owner.
+          This code is what makes deletion possible from a browser later —
+          after the phone is gone, when there is no app to press a button in. */}
+      {code ? (
+        <View style={{ gap: spacing.sm }}>
+          <Text variant="label">Your deletion code</Text>
+          <View
+            style={{
+              padding: spacing.md,
+              borderRadius: radius.md,
+              backgroundColor: palette.surfaceRaised,
+            }}
+          >
+            <Text variant="body" selectable style={{ letterSpacing: 1 }}>
+              {code}
+            </Text>
+          </View>
+          <Text variant="caption" color={palette.textSecondary}>
+            Save this somewhere safe. It deletes your data from the website even
+            if you lose the app, and it can't be shown again — asking for
+            another replaces this one.
+          </Text>
+        </View>
+      ) : (
+        <Button
+          title="Get a deletion code"
+          variant="ghost"
+          fullWidth
+          loading={issuing}
+          onPress={getCode}
+        />
+      )}
     </Card>
   );
 }
