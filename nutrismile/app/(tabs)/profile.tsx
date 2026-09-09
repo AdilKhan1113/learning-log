@@ -15,6 +15,7 @@ import {
   useRecalculateTarget,
 } from '../../src/features/profile/useRecalculateTarget.ts';
 import type { DailyGoal } from '../../src/db/repositories/goals.ts';
+import { type SyncState, useSync } from '../../src/state/sync.ts';
 import { formatGrams, formatKcal } from '../../src/utils/format.ts';
 
 export default function ProfileScreen() {
@@ -23,6 +24,7 @@ export default function ProfileScreen() {
   const goal = useSession((s) => s.goal);
   const refresh = useSession((s) => s.refresh);
   const recalculate = useRecalculateTarget(profile);
+  const sync = useSync();
 
   return (
     <ScrollView
@@ -72,6 +74,8 @@ export default function ProfileScreen() {
         </Card>
       ) : null}
 
+      <SyncCard sync={sync} userId={profile?.id ?? null} />
+
       <RecalculateCard
         recalculate={recalculate}
         currentGoal={goal}
@@ -88,6 +92,90 @@ export default function ProfileScreen() {
       ) : null}
     </ScrollView>
   );
+}
+
+/**
+ * Cloud backup status.
+ *
+ * Quiet by design: this is a convenience, not a feature the user has to manage.
+ * The app works fully offline, so a problem here is a line of status text and
+ * never an error the user has to dismiss.
+ */
+function SyncCard({
+  sync,
+  userId,
+}: {
+  sync: SyncState;
+  userId: string | null;
+}) {
+  if (sync.status === 'disabled') {
+    return (
+      <Card style={{ gap: spacing.sm }}>
+        <Text variant="heading">Backup</Text>
+        <Text variant="body" color={palette.textSecondary}>
+          Your data lives on this device. Cloud backup isn't set up, so nothing
+          leaves the phone.
+        </Text>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={{ gap: spacing.md }}>
+      <Text variant="heading">Backup</Text>
+
+      <Text variant="body" color={palette.textSecondary}>
+        {describeSync(sync)}
+      </Text>
+
+      {sync.pending > 0 ? (
+        <Text variant="caption" color={palette.textTertiary}>
+          {sync.pending} {sync.pending === 1 ? 'change' : 'changes'} waiting to upload.
+          They'll go when there's a connection.
+        </Text>
+      ) : null}
+
+      <Button
+        title="Back up now"
+        variant="secondary"
+        fullWidth
+        loading={sync.status === 'syncing'}
+        disabled={!userId}
+        onPress={() => {
+          if (userId) void sync.syncNow(userId);
+        }}
+      />
+    </Card>
+  );
+}
+
+/** Neutral status text. Being offline is a state, not a problem. */
+function describeSync(sync: SyncState): string {
+  switch (sync.status) {
+    case 'syncing':
+      return 'Backing up…';
+    case 'error':
+      return sync.message
+        ? `Not backed up yet: ${sync.message} Your data is safe on this device.`
+        : 'Not backed up yet. Your data is safe on this device.';
+    case 'signed_out':
+      return 'Setting up backup…';
+    case 'idle':
+      return sync.lastSyncedAt
+        ? `Backed up ${describeWhen(sync.lastSyncedAt)}.`
+        : 'Ready to back up.';
+    default:
+      return 'Your data lives on this device.';
+  }
+}
+
+function describeWhen(timestamp: number): string {
+  const minutes = Math.floor((Date.now() - timestamp) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  return new Date(timestamp).toLocaleDateString();
 }
 
 /**

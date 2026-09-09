@@ -1,0 +1,90 @@
+/**
+ * Supabase client and anonymous sign-in.
+ *
+ * Signing in is anonymous by design: a nutrition app should not put a sign-up
+ * form in front of someone who wants to log their breakfast. The device gets an
+ * identity, its data syncs under that identity, and an email can be attached
+ * later to make it recoverable.
+ *
+ * Both values here are public by design — the anon key is meant to ship in the
+ * bundle, and row-level security is what actually protects the data.
+ */
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+let client: SupabaseClient | null = null;
+
+export function isConfigured(): boolean {
+  return SUPABASE_URL !== '' && SUPABASE_ANON_KEY !== '';
+}
+
+/** The client, or null when no project is configured. */
+export function getSupabase(): SupabaseClient | null {
+  if (!isConfigured()) return null;
+  client ??= createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      storage: AsyncStorage,
+      // The session has to outlive the process or every launch would create a
+      // new anonymous user and orphan the last one's data.
+      persistSession: true,
+      autoRefreshToken: true,
+      // No deep-link callback to parse: nothing here signs in through a URL.
+      detectSessionInUrl: false,
+    },
+  });
+  return client;
+}
+
+export type AuthResult =
+  | { status: 'signed_in'; userId: string }
+  | { status: 'unconfigured' }
+  | { status: 'failed'; message: string };
+
+/**
+ * The current session, creating an anonymous one if there is none.
+ *
+ * Safe to call on every launch: an existing session is reused, so a user keeps
+ * the same identity — and therefore the same data — across restarts.
+ */
+export async function ensureSignedIn(): Promise<AuthResult> {
+  const supabase = getSupabase();
+  if (!supabase) return { status: 'unconfigured' };
+
+  try {
+    const { data: existing } = await supabase.auth.getSession();
+    if (existing.session?.user) {
+      return { status: 'signed_in', userId: existing.session.user.id };
+    }
+
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error || !data.user) {
+      return {
+        status: 'failed',
+        message: error?.message ?? 'Could not start a session.',
+      };
+    }
+    return { status: 'signed_in', userId: data.user.id };
+  } catch (error) {
+    return {
+      status: 'failed',
+      message: error instanceof Error ? error.message : 'Could not reach the server.',
+    };
+  }
+}
+
+/**
+ * Attach an email to the anonymous account, so the data survives losing the
+ * phone. The account keeps its id, so nothing has to be migrated.
+ */
+export async function linkEmail(email: string): Promise<{ ok: boolean; message: string }> {
+  const supabase = getSupabase();
+  if (!supabase) return { ok: false, message: 'No project configured.' };
+
+  const { error } = await supabase.auth.updateUser({ email });
+  return error
+    ? { ok: false, message: error.message }
+    : { ok: true, message: 'Check your email to confirm the address.' };
+}

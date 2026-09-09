@@ -110,3 +110,56 @@ export async function update(id: string, patch: ProfileUpdate): Promise<void> {
     await enqueue(db, 'users', id, 'upsert');
   });
 }
+
+/**
+ * Adopt the id the server issued for this device's account.
+ *
+ * The profile is created offline with a local UUID, long before any sign-in.
+ * Once an anonymous session exists, the rows have to move to that id or they
+ * would be pushed as somebody else's — and row-level security would reject
+ * them.
+ *
+ * Every table referencing the user is rewritten in one transaction with
+ * foreign keys suspended, because a primary key cannot be updated while its
+ * children still point at the old value and the schema does not declare
+ * ON UPDATE CASCADE. Nothing is read or written between the two states.
+ */
+export async function adoptAuthId(localId: string, authId: string): Promise<void> {
+  if (localId === authId) return;
+
+  const db = await getDatabase();
+  const now = Date.now();
+
+  const childTables = [
+    'daily_goals',
+    'foods',
+    'recipes',
+    'log_entries',
+    'weight_entries',
+    'water_entries',
+  ] as const;
+
+  // PRAGMA statements do not take effect inside a transaction, so the guard is
+  // lifted around it rather than within.
+  await db.execAsync('PRAGMA foreign_keys = OFF;');
+  try {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('UPDATE users SET id = ?, updated_at = ? WHERE id = ?', authId, now, localId);
+      for (const table of childTables) {
+        await db.runAsync(
+          `UPDATE ${table} SET user_id = ? WHERE user_id = ?`,
+          authId,
+          localId,
+        );
+      }
+      // The outbox refers to rows by id; the profile row's id just changed.
+      await db.runAsync(
+        `UPDATE sync_queue SET row_id = ? WHERE table_name = 'users' AND row_id = ?`,
+        authId,
+        localId,
+      );
+    });
+  } finally {
+    await db.execAsync('PRAGMA foreign_keys = ON;');
+  }
+}

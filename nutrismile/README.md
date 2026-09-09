@@ -8,9 +8,12 @@ connection returns.
 
 ## Status
 
-**Phases 1–4 complete, Phase 5 in progress.** Logging, the dashboard, search
-against Open Food Facts with local caching, barcode scanning, photo estimation,
-and the Progress screen. Cloud sync is the remaining piece.
+**All five phases built.** Logging, the dashboard, search against Open Food
+Facts with local caching, barcode scanning, photo estimation, the Progress
+screen, and anonymous cloud sync.
+
+Phases 1–4 have been exercised on a device. The sync layer has not yet run
+against a live Supabase project — see `docs/sync.md`.
 
 Nothing has run on a device yet, so the camera path is compiled and unit-tested
 but not hardware-verified — see `docs/barcode-scanning.md`.
@@ -21,7 +24,7 @@ but not hardware-verified — see `docs/barcode-scanning.md`.
 | 2 | food database search and caching | done |
 | 3 | barcode scanning, USDA fallback | done (untested on hardware) |
 | 4 | photo estimation | done (untested on hardware) |
-| 5 | progress charts, sync, polish | charts, weight log and streak done; sync not started |
+| 5 | progress charts, sync, polish | done (sync untested against a live project) |
 
 The Scan and Progress tabs say what they will do rather than showing a camera
 or a chart that cannot yet work.
@@ -62,9 +65,9 @@ and native type stripping, against `node:sqlite`.
 
 ## Verified
 
-- 395 tests passing.
+- 422 tests passing.
 - `tsc --noEmit` clean across all source files.
-- `expo export` bundles: 1786 modules to a Hermes bytecode bundle.
+- `expo export` bundles: 1839 modules to a Hermes bytecode bundle.
 
 Open Food Facts itself is blocked by this environment's network policy, so the
 client is tested against fixtures with an injected `fetch`, not live responses.
@@ -78,6 +81,7 @@ client is tested against fixtures with an injected `fetch`, not live responses.
 `docs/barcode-scanning.md` covers the scan pipeline and where the API keys live.
 `docs/photo-estimation.md` covers the vision estimator, its two providers, its
 validation and its cost.
+`docs/sync.md` covers anonymous auth, the identity handover and conflict rules.
 The schema itself is `src/db/schema/001_init.sql`.
 
 ## Conventions

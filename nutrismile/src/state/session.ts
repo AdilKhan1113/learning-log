@@ -7,6 +7,7 @@
  */
 import { create } from 'zustand';
 import { foods, goals, users } from '../db/repositories/index.ts';
+import { useSync } from './sync.ts';
 import type { DailyGoal } from '../db/repositories/goals.ts';
 import type { Profile } from '../db/repositories/users.ts';
 import { today } from '../utils/dates.ts';
@@ -41,6 +42,10 @@ export const useSession = create<SessionState>((set, get) => ({
       // Failing to prune is not worth telling anyone about, and never blocks
       // the app opening.
       void foods.pruneCache().catch(() => {});
+
+      // Sign in and sync in the background. The app is fully usable before
+      // this finishes, and entirely usable if it never does.
+      if (profile) void useSync.getState().start(profile.id).catch(() => {});
     } catch (error) {
       set({
         status: 'error',
