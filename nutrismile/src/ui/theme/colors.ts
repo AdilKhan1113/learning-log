@@ -28,10 +28,21 @@ export const palette = {
   accentMuted: '#2A4A3E',
   accentText: '#0C1B15',
 
-  // Macros
-  protein: '#8AB4F8',
-  carbs: '#F5C97B',
-  fat: '#D89BE0',
+  // Macros.
+  //
+  // Not chosen by eye: these are stepped to OKLCH lightnesses inside the
+  // dark-mode band (0.48–0.67) at a fixed chroma, and checked with the
+  // palette validator against both the card surface and the page background.
+  // All five checks pass — lightness band, chroma floor, colour-vision
+  // separation, normal-vision separation, and 3:1 contrast — with no warning
+  // to work around. They differ in lightness as well as hue, so the ordering
+  // survives being read in greyscale.
+  //
+  // Charts using them still carry a legend and direct labels, so identity is
+  // never carried by colour alone.
+  protein: '#5490F3',
+  carbs: '#BA7B00',
+  fat: '#B260BE',
   water: '#7BC4E0',
 
   // Neutral track behind any progress indicator

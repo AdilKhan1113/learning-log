@@ -8,8 +8,9 @@ connection returns.
 
 ## Status
 
-**Phases 1–4 complete.** Logging, the dashboard, search against Open Food
-Facts with local caching, barcode scanning, and photo estimation.
+**Phases 1–4 complete, Phase 5 in progress.** Logging, the dashboard, search
+against Open Food Facts with local caching, barcode scanning, photo estimation,
+and the Progress screen. Cloud sync is the remaining piece.
 
 Nothing has run on a device yet, so the camera path is compiled and unit-tested
 but not hardware-verified — see `docs/barcode-scanning.md`.
@@ -20,7 +21,7 @@ but not hardware-verified — see `docs/barcode-scanning.md`.
 | 2 | food database search and caching | done |
 | 3 | barcode scanning, USDA fallback | done (untested on hardware) |
 | 4 | photo estimation | done (untested on hardware) |
-| 5 | progress charts, sync, polish | schema and outbox ready; nothing drains them yet |
+| 5 | progress charts, sync, polish | charts, weight log and streak done; sync not started |
 
 The Scan and Progress tabs say what they will do rather than showing a camera
 or a chart that cannot yet work.
@@ -61,9 +62,9 @@ and native type stripping, against `node:sqlite`.
 
 ## Verified
 
-- 362 tests passing.
+- 395 tests passing.
 - `tsc --noEmit` clean across all source files.
-- `expo export` bundles: 1781 modules to a Hermes bytecode bundle.
+- `expo export` bundles: 1786 modules to a Hermes bytecode bundle.
 
 Open Food Facts itself is blocked by this environment's network policy, so the
 client is tested against fixtures with an injected `fetch`, not live responses.

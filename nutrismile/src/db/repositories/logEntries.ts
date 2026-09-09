@@ -344,3 +344,56 @@ export async function loggedDates(
   );
   return rows.map((r) => r.log_date);
 }
+
+/**
+ * Per-day totals across a range, for the progress charts.
+ *
+ * Reads the v_daily_totals view, which sums the entries' own snapshots — so a
+ * chart of last month shows what those days showed at the time, not what they
+ * would compute to against today's food data.
+ *
+ * Days with nothing logged are simply absent rather than returned as zeroes:
+ * a day not recorded is not a day of no food, and averaging it in as zero
+ * would understate every period it appears in.
+ */
+export async function dailyTotals(
+  userId: string,
+  from: DateString,
+  to: DateString,
+): Promise<
+  {
+    date: DateString;
+    kcal: number;
+    proteinG: number;
+    carbsG: number;
+    fatG: number;
+    entryCount: number;
+  }[]
+> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{
+    log_date: DateString;
+    kcal: number | null;
+    protein_g: number | null;
+    carbs_g: number | null;
+    fat_g: number | null;
+    entry_count: number;
+  }>(
+    `SELECT log_date, kcal, protein_g, carbs_g, fat_g, entry_count
+     FROM v_daily_totals
+     WHERE user_id = ? AND log_date >= ? AND log_date <= ?
+     ORDER BY log_date`,
+    userId,
+    from,
+    to,
+  );
+
+  return rows.map((row) => ({
+    date: row.log_date,
+    kcal: row.kcal ?? 0,
+    proteinG: row.protein_g ?? 0,
+    carbsG: row.carbs_g ?? 0,
+    fatG: row.fat_g ?? 0,
+    entryCount: row.entry_count,
+  }));
+}
