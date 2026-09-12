@@ -11,6 +11,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
+import { withTimeout } from './timeoutFetch.ts';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -34,6 +35,9 @@ export function getSupabase(): SupabaseClient | null {
       // No deep-link callback to parse: nothing here signs in through a URL.
       detectSessionInUrl: false,
     },
+    // Without this, a server that stops answering mid-request leaves the app
+    // waiting indefinitely and the backup status stuck on "Backing up…".
+    global: { fetch: withTimeout() },
   });
   return client;
 }

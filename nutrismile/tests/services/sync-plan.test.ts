@@ -7,6 +7,7 @@ import {
   type QueueEntry,
   coalesceQueue,
   isSyncTable,
+  describeRemoteError,
   resolveConflict,
   toLocalRow,
   toRemoteRow,
@@ -206,5 +207,57 @@ describe('resolving a conflict', () => {
   test('a delete is decided by time like any other edit', () => {
     // Deleted on one device at t=200, edited on another at t=100.
     assert.equal(resolveConflict(200, 100), 'local');
+  });
+});
+
+describe('reporting a refused row', () => {
+  test('missing tables are named as such, not as a generic outage', () => {
+    // The case that shipped: a project whose migrations were never pushed.
+    // Every call 404s, and the old code reported a clean backup over a queue
+    // that never emptied.
+    assert.equal(
+      describeRemoteError({ code: 'PGRST205', message: "Could not find the table 'public.users'" }),
+      'The backup database has no tables yet.',
+    );
+    assert.equal(
+      describeRemoteError({ code: '42P01' }),
+      'The backup database has no tables yet.',
+    );
+  });
+
+  test('a refusal to write is distinguished from a missing table', () => {
+    assert.match(describeRemoteError({ code: '42501' }), /would not accept/);
+    assert.match(describeRemoteError({ code: 'PGRST301' }), /would not accept/);
+  });
+
+  test("an unrecognised failure keeps the server's own wording", () => {
+    assert.equal(
+      describeRemoteError({ code: 'XX000', message: 'connection reset by peer' }),
+      'connection reset by peer.',
+    );
+  });
+
+  test('a message that already ends in a full stop does not get a second', () => {
+    assert.equal(describeRemoteError({ message: 'Something broke.' }), 'Something broke.');
+  });
+
+  test('an error with nothing in it still says something', () => {
+    for (const empty of [null, undefined, {}, { message: '   ' }]) {
+      const described = describeRemoteError(empty);
+      assert.ok(described.length > 0);
+      assert.match(described, /\.$/);
+    }
+  });
+
+  test('no failure blames the user', () => {
+    const messages = [
+      describeRemoteError({ code: 'PGRST205' }),
+      describeRemoteError({ code: '42501' }),
+      describeRemoteError({ message: 'timeout' }),
+      describeRemoteError(null),
+    ];
+    for (const message of messages) {
+      assert.doesNotMatch(message, /\byou\b|\byour fault\b|invalid|failed to/i);
+    }
   });
 });

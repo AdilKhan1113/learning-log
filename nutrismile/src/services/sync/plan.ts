@@ -174,3 +174,38 @@ export function resolveConflict(
   if (remoteUpdatedAt > localUpdatedAt) return 'remote';
   return 'identical';
 }
+
+/** What Supabase hands back when a call fails. Only the parts we read. */
+export interface RemoteError {
+  message?: string;
+  code?: string;
+}
+
+/**
+ * What to tell the user when the server refuses a row.
+ *
+ * These used to be swallowed: push stopped at the first failure and reported
+ * how many rows it had managed, so a project with no tables at all synced
+ * "successfully" and the Profile screen said "Backed up just now" over a queue
+ * that never emptied. Saying nothing was worse than saying the wrong thing —
+ * the one state a backup must never claim is one it is not in.
+ *
+ * Two failures are worth naming, because the fix differs and neither is
+ * transient: the tables not existing yet, and the account not being allowed to
+ * write. Everything else keeps the server's own wording, which is more use
+ * than a category we invented.
+ *
+ * Nothing here blames the user; a failed backup is a fact about the server.
+ */
+export function describeRemoteError(error: RemoteError | null | undefined): string {
+  // PGRST205: PostgREST cannot find the table. 42P01: Postgres says the same.
+  if (error?.code === 'PGRST205' || error?.code === '42P01') {
+    return 'The backup database has no tables yet.';
+  }
+  // 42501 is a row-level-security refusal; PGRST301 is a rejected token.
+  if (error?.code === '42501' || error?.code === 'PGRST301') {
+    return 'The backup service would not accept this device’s data.';
+  }
+  const message = error?.message?.trim();
+  return message ? `${message.replace(/\.$/, '')}.` : 'The backup service could not be reached.';
+}

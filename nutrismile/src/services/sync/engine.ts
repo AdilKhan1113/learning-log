@@ -18,6 +18,7 @@ import {
   SYNC_TABLES,
   type SyncTable,
   coalesceQueue,
+  describeRemoteError,
   toLocalRow,
   toRemoteRow,
 } from './plan.ts';
@@ -103,18 +104,18 @@ async function pushChange(
   supabase: SupabaseClient,
   change: PlannedChange,
   userId: string,
-): Promise<boolean> {
+): Promise<string | null> {
   const row = await readRow(change.table, change.rowId);
 
   // Hard-deleted locally with nothing to send — the queue entry is stale.
-  if (!row) return true;
+  if (!row) return null;
 
   const remote = toRemoteRow(change.table, row, userId);
   const { error } = await supabase.from(change.table).upsert(remote, { onConflict: 'id' });
-  if (error) return false;
+  if (error) return describeRemoteError(error);
 
   await markClean(change.table, change.rowId, Number(row.updated_at ?? Date.now()));
-  return true;
+  return null;
 }
 
 /**
@@ -157,23 +158,37 @@ async function applyRemoteRow(
   return true;
 }
 
-/** Push everything queued. Stops at the first failure so ordering holds. */
-export async function push(supabase: SupabaseClient, userId: string): Promise<number> {
+/**
+ * Push everything queued. Stops at the first failure so ordering holds, and
+ * reports why — a run that stopped early is not a run that succeeded.
+ */
+export async function push(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ pushed: number; problem: string | null }> {
   const planned = coalesceQueue(await readQueue());
   let pushed = 0;
 
   for (const change of planned) {
-    const ok = await pushChange(supabase, change, userId);
+    const problem = await pushChange(supabase, change, userId);
     // A later change may depend on this one, so stop rather than skip.
-    if (!ok) break;
+    if (problem) return { pushed, problem };
     await clearQueue(change.queueIds);
     pushed++;
   }
-  return pushed;
+  return { pushed, problem: null };
 }
 
-/** Pull everything changed since the last cursor, table by table. */
-export async function pull(supabase: SupabaseClient, userId: string): Promise<number> {
+/**
+ * Pull everything changed since the last cursor, table by table.
+ *
+ * An error and an empty page used to take the same branch, so a server that
+ * refused every request looked exactly like a server with nothing new.
+ */
+export async function pull(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ pulled: number; problem: string | null }> {
   let pulled = 0;
 
   for (const table of SYNC_TABLES) {
@@ -195,7 +210,8 @@ export async function pull(supabase: SupabaseClient, userId: string): Promise<nu
         ? query.eq('id', userId)
         : query.eq('user_id', userId));
 
-      if (error || !data || data.length === 0) break;
+      if (error) return { pulled, problem: describeRemoteError(error) };
+      if (!data || data.length === 0) break;
 
       for (const remote of data as Row[]) {
         if (await applyRemoteRow(table, remote, columns)) pulled++;
@@ -207,7 +223,7 @@ export async function pull(supabase: SupabaseClient, userId: string): Promise<nu
     }
   }
 
-  return pulled;
+  return { pulled, problem: null };
 }
 
 /**
@@ -222,9 +238,16 @@ export async function sync(userId: string): Promise<SyncOutcome> {
   if (!supabase) return { pushed: 0, pulled: 0, problem: 'Cloud backup isn’t set up.' };
 
   try {
-    const pushed = await push(supabase, userId);
-    const pulled = await pull(supabase, userId);
-    return { pushed, pulled, problem: null };
+    const pushResult = await push(supabase, userId);
+    // Pull anyway: a push that failed on one table does not mean the rest of
+    // the account cannot be brought down, and the user is better off with
+    // fresh data plus an honest status than with neither.
+    const pullResult = await pull(supabase, userId);
+    return {
+      pushed: pushResult.pushed,
+      pulled: pullResult.pulled,
+      problem: pushResult.problem ?? pullResult.problem,
+    };
   } catch (error) {
     return {
       pushed: 0,
